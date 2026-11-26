@@ -38,8 +38,25 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             if (world == null) world = Bukkit.createWorld(new WorldCreator(name));
             if (world != null) world.setGameRule(org.bukkit.GameRule.DO_IMMEDIATE_RESPAWN, true);
         }
+        buildLobby();
         Bukkit.getPluginManager().registerEvents(this, this);
         getLogger().info("NebulaCore enabled. Use /setlobby at your lobby location.");
+    }
+
+    private void buildLobby() {
+        if (lobby == null || lobby.getWorld() == null) return;
+        World w = lobby.getWorld();
+        int y = lobby.getBlockY() - 1;
+        int cx = lobby.getBlockX(), cz = lobby.getBlockZ();
+        for (int x = -16; x <= 16; x++) for (int z = -16; z <= 16; z++) {
+            Material floor = (Math.abs(x) == 16 || Math.abs(z) == 16) ? Material.PURPLE_CONCRETE : ((Math.abs(x) % 2 == 0 && Math.abs(z) % 2 == 0) ? Material.POLISHED_BLACKSTONE : Material.BLACK_CONCRETE);
+            w.getBlockAt(cx + x, y, cz + z).setType(floor, false);
+        }
+        for (int[] p : new int[][]{{-14,-14},{-14,14},{14,-14},{14,14}}) {
+            for (int h = 1; h <= 5; h++) w.getBlockAt(cx+p[0], y+h, cz+p[1]).setType(Material.PURPLE_STAINED_GLASS, false);
+            w.getBlockAt(cx+p[0], y+6, cz+p[1]).setType(Material.END_ROD, false);
+        }
+        w.getBlockAt(cx, y+1, cz).setType(Material.BEACON, false);
     }
 
     private Location loadLobby() {
@@ -106,7 +123,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         inv.setItem(10, item(Material.GRASS_BLOCK, "Survival Map 1", List.of("Click to enter Survival I")));
         inv.setItem(11, item(Material.MOSS_BLOCK, "Survival Map 2", List.of("Click to enter Survival II")));
         inv.setItem(13, item(Material.RED_BED, "BedWars", List.of("Two arena slots: Map 1 and Map 2", "Requires BedWars arena setup")));
-        inv.setItem(15, item(Material.LUCKY_BLOCK, "Lucky Pillars", List.of("Two arena slots: Map 1 and Map 2", "Requires Lucky Pillars arena setup")));
+        inv.setItem(15, item(Material.GOLD_BLOCK, "Lucky Pillars", List.of("Two arena slots: Map 1 and Map 2", "Requires Lucky Pillars arena setup")));
         inv.setItem(22, item(Material.NETHER_STAR, "Lobby", List.of("Return to the protected lobby")));
         player.openInventory(inv);
     }
