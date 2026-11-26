@@ -44,10 +44,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
-          BUILD=$(curl -fsSL https://api.papermc.io/v2/projects/paper/versions/1.21.11 | jq -r '.builds[-1]')
-          test -n "$BUILD" && test "$BUILD" != "null"
-          curl -fL "https://api.papermc.io/v2/projects/paper/versions/1.21.11/builds/$BUILD/downloads/paper-1.21.11-$BUILD.jar" -o paper.jar
-          echo "Downloaded Paper 1.21.11 build $BUILD"
+          USER_AGENT="NebulaNetwork/1.0 (https://github.com/ndmcgamer320-commits/nebula-network)"
+          BUILDS=$(curl -fsSL -H "User-Agent: $USER_AGENT" -H "Accept: application/json" https://fill.papermc.io/v3/projects/paper/versions/1.21.11/builds)
+          PAPER_URL=$(echo "$BUILDS" | jq -r 'first(.[] | select(.channel == "STABLE") | .downloads."server:default".url) // "null"')
+          if [ "$PAPER_URL" = "null" ] || [ -z "$PAPER_URL" ]; then
+            echo "::error::No stable Paper build is available for Minecraft 1.21.11."
+            echo "$BUILDS" | jq .
+            exit 1
+          fi
+          curl -fL -H "User-Agent: $USER_AGENT" "$PAPER_URL" -o paper.jar
+          test -s paper.jar
+          echo "Downloaded Paper 1.21.11 from the official PaperMC downloads service."
 
       - name: Compile NebulaCore
         run: |
