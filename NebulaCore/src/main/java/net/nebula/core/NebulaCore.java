@@ -38,8 +38,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     private Location lobby;
     private final Map<UUID, Boolean> playersHidden = new HashMap<>();
     private final Random random = new Random();
-    private int bedWarsJoinCounter = 0;
-    private int duelJoinCounter = 0;
+    private NebulaGames games;
     private static final String PREFIX = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA " + ChatColor.LIGHT_PURPLE + "» " + ChatColor.GRAY;
     private static final String MENU_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA NETWORK";
     private static final String SETTINGS_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA SETTINGS";
@@ -54,10 +53,12 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         }
         buildLobby();
         Bukkit.getPluginManager().registerEvents(this, this);
+        games = new NebulaGames(this, lobby);
+        games.enable();
         Bukkit.getScheduler().runTaskLater(this, () -> {
             regenerateArena(Bukkit.getWorld("bedwars_1"), "bedwars_1");
             regenerateArena(Bukkit.getWorld("duel_arena"), "duel_arena");
-            getLogger().info("Generated BedWars and Duel maps. Use /arenareset to regenerate them.");
+            getLogger().info("Generated BedWars and layered CPvP maps. Use /arenareset to regenerate them.");
         }, 20L);
         for (Player p : Bukkit.getOnlinePlayers()) updateTab(p);
         getLogger().info("NebulaCore enabled with settings, RTP, TAB and regenerating arenas.");
@@ -133,7 +134,8 @@ public final class NebulaCore extends JavaPlugin implements Listener {
 
     @EventHandler public void onMobSpawn(CreatureSpawnEvent e) {
         String worldName = e.getLocation().getWorld().getName();
-        if (inLobby(e.getLocation()) || worldName.equals("bedwars_1") || worldName.equals("duel_arena")) e.setCancelled(true);
+        boolean protectedZone = inLobby(e.getLocation()) || worldName.equals("bedwars_1") || worldName.equals("duel_arena");
+        if (protectedZone && e.getSpawnReason() != CreatureSpawnEvent.SpawnReason.CUSTOM) e.setCancelled(true);
     }
 
     @EventHandler public void onBreak(BlockBreakEvent e) {
@@ -188,8 +190,8 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         Inventory inv = Bukkit.createInventory(null, 27, MENU_TITLE);
         inv.setItem(10, item(Material.GRASS_BLOCK, "Survival Map 1", List.of("Click to enter Survival I")));
         inv.setItem(11, item(Material.MOSS_BLOCK, "Survival Map 2", List.of("Click to enter Survival II")));
-        inv.setItem(13, item(Material.RED_BED, "BedWars Arena", List.of("Custom sky-island map", "Click to enter the map", "Admin reset: /arenareset bedwars")));
-        inv.setItem(14, item(Material.IRON_SWORD, "Duel Arena", List.of("Custom circular PvP map", "Click to enter the map", "Admin reset: /arenareset duel")));
+        inv.setItem(13, item(Material.RED_BED, "BedWars", List.of("Queue for 1v1, 2v2 or 3v3", "Speak to the BedWars NPC")));
+        inv.setItem(14, item(Material.IRON_SWORD, "CPvP Duels", List.of("Player queue or practice bot", "Custom layered grass arena")));
         inv.setItem(15, item(Material.GOLD_BLOCK, "Lucky Pillars", List.of("Arena setup required before matches")));
         inv.setItem(22, item(Material.NETHER_STAR, "Lobby", List.of("Return to the protected lobby")));
         player.openInventory(inv);
@@ -216,8 +218,8 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         if (title.equals(MENU_TITLE)) {
             if (slot == 10) go(p, "survival_1");
             if (slot == 11) go(p, "survival_2");
-            if (slot == 13) enterBedWars(p);
-            if (slot == 14) enterDuel(p);
+            if (slot == 13) games.openBedWarsMenu(p);
+            if (slot == 14) games.openDuelMenu(p);
             if (slot == 15) p.sendMessage(PREFIX + "Lucky Pillars needs configured arenas before matches can start.");
             if (slot == 22) p.teleport(lobby);
             p.closeInventory();
@@ -239,24 +241,6 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         else p.closeInventory();
     }
 
-    private void enterBedWars(Player p) {
-        World world = Bukkit.getWorld("bedwars_1");
-        if (world == null) { p.sendMessage(PREFIX + "BedWars map is not ready. Ask an admin to run /arenareset bedwars."); return; }
-        int x = (bedWarsJoinCounter++ % 2 == 0) ? -24 : 24;
-        p.teleport(new Location(world, x + 0.5, 100, 4.5));
-        p.setFallDistance(0);
-        p.sendMessage(PREFIX + "Entered the BedWars sky arena. This is the map preview; match queues and bed-protection rules are not enabled yet.");
-    }
-
-    private void enterDuel(Player p) {
-        World world = Bukkit.getWorld("duel_arena");
-        if (world == null) { p.sendMessage(PREFIX + "Duel map is not ready. Ask an admin to run /arenareset duel."); return; }
-        int x = (duelJoinCounter++ % 2 == 0) ? -10 : 10;
-        p.teleport(new Location(world, x + 0.5, 100, 3.5));
-        p.setFallDistance(0);
-        p.sendMessage(PREFIX + "Entered the Duel arena. The map is ready; duel matchmaking and kits are not enabled yet.");
-    }
-
     private void regenerateArena(World world, String arena) {
         if (world == null) return;
         for (Entity entity : world.getEntities()) {
@@ -264,6 +248,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         }
         if (arena.equals("bedwars_1")) ArenaBuilder.buildBedWars(world);
         else if (arena.equals("duel_arena")) ArenaBuilder.buildDuel(world);
+        if (games != null) games.onArenaRegenerated(arena);
     }
 
     private boolean resetArenaWorld(String arena) {
@@ -325,11 +310,11 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             return true;
         }
         if (command.getName().equalsIgnoreCase("bedwars")) {
-            if (sender instanceof Player p) enterBedWars(p); else sender.sendMessage("Players only.");
+            if (sender instanceof Player p) games.handleBedWarsCommand(p, args); else sender.sendMessage("Players only.");
             return true;
         }
         if (command.getName().equalsIgnoreCase("duel")) {
-            if (sender instanceof Player p) enterDuel(p); else sender.sendMessage("Players only.");
+            if (sender instanceof Player p) games.handleDuelCommand(p, args); else sender.sendMessage("Players only.");
             return true;
         }
         if (command.getName().equalsIgnoreCase("arenareset")) {
