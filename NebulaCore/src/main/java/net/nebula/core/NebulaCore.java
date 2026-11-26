@@ -282,9 +282,14 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         Player player = e.getPlayer();
         if (player.getWorld().equals(lobby.getWorld())) {
             Bukkit.getScheduler().runTaskLater(this, () -> {
-                if (player.isOnline() && player.getWorld().equals(lobby.getWorld())) {
+                AuthMeApi authMe = AuthMeApi.getInstance();
+                if (player.isOnline() && authMe != null && authMe.isAuthenticated(player)
+                        && player.getWorld().equals(lobby.getWorld())) {
                     giveLobbyLoadout(player);
-                    if (hud != null) hud.refreshPlayer(player);
+                    if (hud != null) {
+                        hud.refreshPlayer(player);
+                        hud.setNameTagsVisible(player, getPlayerSetting(player, "nametags", true));
+                    }
                 }
             }, 2L);
         }
