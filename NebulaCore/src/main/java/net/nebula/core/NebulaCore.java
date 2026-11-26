@@ -120,7 +120,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         if (lobby==null||lobby.getWorld()==null) return;
         org.bukkit.WorldBorder border=lobby.getWorld().getWorldBorder();
         border.setCenter(lobby.getX(),lobby.getZ());
-        border.setSize(110.0);
+        border.setSize(importedLobby ? 94.0 : 84.0);
         border.setDamageBuffer(0.0);
         border.setDamageAmount(2.0);
         border.setWarningDistance(5);
@@ -183,6 +183,20 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         String worldName = e.getLocation().getWorld().getName();
         boolean protectedZone = inLobby(e.getLocation()) || worldName.equals("bedwars_1") || worldName.equals("duel_arena");
         if (protectedZone && e.getSpawnReason() != CreatureSpawnEvent.SpawnReason.CUSTOM) e.setCancelled(true);
+    }
+
+    @EventHandler public void onLobbyBoundaryMove(org.bukkit.event.player.PlayerMoveEvent e) {
+        Location to = e.getTo();
+        if (to == null || lobby == null || to.getWorld() == null || !to.getWorld().equals(lobby.getWorld())) return;
+        double dx = to.getX() - lobby.getX();
+        double dz = to.getZ() - lobby.getZ();
+        double safeRadius = importedLobby ? 46.5 : 42.5;
+        if (dx * dx + dz * dz > safeRadius * safeRadius) {
+            e.setTo(e.getFrom());
+            if (e.getFrom().distanceSquared(lobby) <= safeRadius * safeRadius) {
+                e.getPlayer().sendActionBar(ChatColor.RED + "You cannot leave the lobby island.");
+            }
+        }
     }
 
     @EventHandler public void onBreak(BlockBreakEvent e) {
