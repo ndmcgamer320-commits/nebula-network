@@ -33,6 +33,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -228,7 +229,6 @@ public final class NebulaCore extends JavaPlugin implements Listener {
 
     @EventHandler public void onWorldChange(PlayerChangedWorldEvent e) {
         Player player = e.getPlayer();
-        saveSurvivalLocation(player, e.getFrom());
         if (player.getWorld().equals(lobby.getWorld())) {
             Bukkit.getScheduler().runTaskLater(this, () -> {
                 if (player.isOnline() && player.getWorld().equals(lobby.getWorld())) {
@@ -237,15 +237,21 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 }
             }, 2L);
         }
+        scheduleArenaRegeneration(e.getFrom());
+    }
+
+    @EventHandler public void onPlayerTeleport(PlayerTeleportEvent e) {
+        if (e.getTo() == null || e.getFrom().getWorld().equals(e.getTo().getWorld())) return;
+        saveSurvivalLocation(e.getPlayer(), e.getFrom());
     }
 
     private boolean isSurvivalWorld(World world) {
         return world != null && (world.getName().equals("survival_1") || world.getName().equals("survival_2"));
     }
 
-    private void saveSurvivalLocation(Player player, World world) {
+    private void saveSurvivalLocation(Player player, Location location) {
+        World world = location.getWorld();
         if (!isSurvivalWorld(world)) return;
-        Location location = player.getLocation();
         String path = player.getUniqueId() + "." + world.getName();
         lastSurvival.set(path + ".x", location.getX());
         lastSurvival.set(path + ".y", location.getY());
@@ -257,6 +263,10 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         } catch (java.io.IOException ex) {
             getLogger().warning("Could not save last Survival location for " + player.getName() + ": " + ex.getMessage());
         }
+    }
+
+    private void saveSurvivalLocation(Player player, World world) {
+        if (isSurvivalWorld(world)) saveSurvivalLocation(player, player.getLocation());
     }
 
     private Location getLastSurvivalLocation(Player player, World world) {
@@ -276,16 +286,13 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         scheduleArenaRegeneration(e.getPlayer().getWorld());
     }
 
+    @EventHandler public void onArenaQuit(PlayerQuitEvent e) {
+        saveSurvivalLocation(e.getPlayer(), e.getPlayer().getWorld());
+        scheduleArenaRegeneration(e.getPlayer().getWorld());
+    }
+
     @EventHandler public void onLobbyPickup(EntityPickupItemEvent e) {
         if (e.getEntity() instanceof Player player && inLobby(player.getLocation())) e.setCancelled(true);
-    }
-
-    @EventHandler public void onArenaExit(PlayerChangedWorldEvent e) {
-        scheduleArenaRegeneration(e.getFrom());
-    }
-
-    @EventHandler public void onArenaQuit(PlayerQuitEvent e) {
-        scheduleArenaRegeneration(e.getPlayer().getWorld());
     }
 
     private void scheduleArenaRegeneration(World departed) {
