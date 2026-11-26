@@ -21,9 +21,9 @@
 - Custom BedWars sky-island map in `bedwars_1` with red/blue bases, beds, bridges, and a central island
 - Custom circular Duel PvP map in `duel_arena` with two spawn pads and a protected boundary
 - Arena maps regenerate on server startup and when the last player leaves an arena
-- `/bedwars` and `/duel` enter the map previews; `/arenareset [bedwars|duel|all]` manually restores a map (operator permission)
+- `/bedwars` and `/duel` enter the map previews; `/arenareset [bedwars|duel|all]` manually restores a map (operator or OWNER/ADMIN rank)
 
-**Gameplay status:** The maps and regeneration are implemented, but full BedWars matchmaking, team/bed-elimination rules, and the CPvP duel queue/kit editor/win system are not implemented yet. Lucky Pillars is still a placeholder.
+**Testing status:** The project compiles, but the live server, map download, NPC skin fetch, and multiplayer flows still need a real server session to verify. Lucky Pillars remains a placeholder.
 
 ## One-time setup
 
