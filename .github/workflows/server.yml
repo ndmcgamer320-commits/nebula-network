@@ -21,6 +21,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Restore world and rank data
+        uses: actions/cache@v4
+        with:
+          path: |
+            world/
+            survival_1/
+            survival_2/
+            bedwars_1/
+            bedwars_2/
+            pillars_1/
+            pillars_2/
+            duel_arena/
+            plugins/NebulaCore/
+            lobby-imported.flag
+          key: nebula-server-state-${{ github.run_id }}
+          restore-keys: |
+            nebula-server-state-
+
       - name: Verify committed EULA and tunnel secret
         env:
           PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
@@ -43,7 +61,7 @@ jobs:
       - name: Download Paper 1.21.11
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq
+          sudo apt-get install -y jq unzip
           USER_AGENT="NebulaNetwork/1.0 (https://github.com/ndmcgamer320-commits/nebula-network)"
           BUILDS=$(curl -fsSL -H "User-Agent: $USER_AGENT" -H "Accept: application/json" https://fill.papermc.io/v3/projects/paper/versions/1.21.11/builds)
           PAPER_URL=$(echo "$BUILDS" | jq -r 'first(.[] | select(.channel == "STABLE") | .downloads."server:default".url) // "null"')
@@ -56,11 +74,52 @@ jobs:
           test -s paper.jar
           echo "Downloaded Paper 1.21.11 from the official PaperMC downloads service."
 
+      - name: Import Kubj colorful lobby map
+        run: |
+          if [ -f lobby-imported.flag ]; then
+            echo "A previously imported lobby map is present in the restored world cache."
+            exit 0
+          fi
+
+          MAP_PAGE="https://www.planetminecraft.com/project/colorful-lobby-100x100-by-kubj/"
+          MAP_DOWNLOAD="${MAP_PAGE}download/worldmap/"
+          MAP_ZIP="/tmp/nebula-kubj-lobby.zip"
+          MAP_DIR="/tmp/nebula-kubj-extracted"
+          mkdir -p "$MAP_DIR"
+
+          echo "Trying the creator's free 1.21+ Colorful Lobby download..."
+          if curl -fL --retry 2 --retry-delay 3 \
+            -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36" \
+            -e "$MAP_PAGE" "$MAP_DOWNLOAD" -o "$MAP_ZIP" \
+            && unzip -tq "$MAP_ZIP"; then
+            unzip -q "$MAP_ZIP" -d "$MAP_DIR"
+            LEVEL_FILE=$(find "$MAP_DIR" -type f -name level.dat -print -quit)
+            if [ -n "$LEVEL_FILE" ]; then
+              WORLD_DIR=$(dirname "$LEVEL_FILE")
+              rm -rf world
+              cp -a "$WORLD_DIR" world
+              touch lobby-imported.flag
+              echo "Imported Kubj's Colorful Lobby world successfully."
+            else
+              echo "::warning::The downloaded archive had no level.dat; NebulaCore will generate its own floating lobby."
+            fi
+          else
+            echo "::warning::PlanetMinecraft blocked the automated map download; NebulaCore will generate its scenic fallback lobby."
+          fi
+
       - name: Compile NebulaCore
         run: |
           mvn -B -f NebulaCore/pom.xml package
           mkdir -p plugins
           cp NebulaCore/target/NebulaCore-1.0.0.jar plugins/
+
+      - name: Install Citizens NPC plugin
+        run: |
+          CITIZENS_URL="https://ci.citizensnpcs.co/job/Citizens2/4119/artifact/dist/target/Citizens-2.0.41-b4119.jar"
+          curl -fL --retry 3 "$CITIZENS_URL" -o plugins/Citizens-2.0.41.jar
+          test -s plugins/Citizens-2.0.41.jar
+          jar tf plugins/Citizens-2.0.41.jar | grep -q "plugin.yml"
+          echo "Citizens installed for player-model lobby NPCs."
 
       - name: Start Playit tunnel
         env:
