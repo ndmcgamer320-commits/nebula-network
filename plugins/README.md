@@ -13,4 +13,4 @@ The selector has entries reserved for BedWars and Lucky Pillars, but these modes
 
 Do not download random plugin JARs or commit binary plugin files to this repository. Check each plugin's official project page, supported server versions, license, and setup documentation before using it. Import arena maps through the plugin's documented process.
 
-The current workflow creates six named worlds (two Survival starter worlds and four empty arena world slots are reserved by naming convention only if added later). The two BedWars and two Lucky Pillars maps still need to be built or imported and registered in their respective plugins.
+The current workflow creates six named worlds: two Survival starter worlds, two empty BedWars world slots, and two empty Lucky Pillars world slots. The four game-mode worlds are only blank generated terrain; they are not finished arena maps and are not registered as playable matches.
