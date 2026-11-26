@@ -2,12 +2,16 @@ package net.nebula.core;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Random;
+import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
+import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -15,8 +19,10 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -27,7 +33,11 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class NebulaCore extends JavaPlugin implements Listener {
     private Location lobby;
+    private final Map<UUID, Boolean> playersHidden = new HashMap<>();
+    private final Random random = new Random();
     private static final String PREFIX = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA " + ChatColor.LIGHT_PURPLE + "» " + ChatColor.GRAY;
+    private static final String MENU_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA NETWORK";
+    private static final String SETTINGS_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA SETTINGS";
 
     @Override
     public void onEnable() {
@@ -39,7 +49,8 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         }
         buildLobby();
         Bukkit.getPluginManager().registerEvents(this, this);
-        getLogger().info("NebulaCore enabled. Use /setlobby at your lobby location.");
+        for (Player p : Bukkit.getOnlinePlayers()) updateTab(p);
+        getLogger().info("NebulaCore enabled with settings, RTP and TAB styling.");
     }
 
     private void buildLobby() {
@@ -60,9 +71,9 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     }
 
     private Location loadLobby() {
-        if (!getConfig().contains("lobby.world")) return Bukkit.getWorlds().get(0).getSpawnLocation();
+        if (!getConfig().contains("lobby.world")) return Bukkit.getWorlds().get(0).getSpawnLocation().add(0.5, 1, 0.5);
         World world = Bukkit.getWorld(getConfig().getString("lobby.world", "world"));
-        if (world == null) return Bukkit.getWorlds().get(0).getSpawnLocation();
+        if (world == null) return Bukkit.getWorlds().get(0).getSpawnLocation().add(0.5, 1, 0.5);
         return new Location(world, getConfig().getDouble("lobby.x"), getConfig().getDouble("lobby.y"),
                 getConfig().getDouble("lobby.z"), (float)getConfig().getDouble("lobby.yaw"), (float)getConfig().getDouble("lobby.pitch"));
     }
@@ -72,11 +83,28 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         return loc.distanceSquared(lobby) <= 10000;
     }
 
+    private void updateTab(Player p) {
+        String header = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "✦ NEBULA NETWORK ✦\n"
+                + ChatColor.LIGHT_PURPLE + "Survival  •  BedWars  •  Lucky Pillars  •  Duels";
+        String footer = ChatColor.GRAY + "Online: " + ChatColor.WHITE + Bukkit.getOnlinePlayers().size()
+                + ChatColor.DARK_GRAY + "  |  " + ChatColor.LIGHT_PURPLE + "play.nebula.network";
+        p.setPlayerListHeaderFooter(header, footer);
+        p.setPlayerListName(ChatColor.LIGHT_PURPLE + p.getName());
+    }
+
     @EventHandler public void onJoin(PlayerJoinEvent e) {
-        e.setJoinMessage(PREFIX + ChatColor.WHITE + e.getPlayer().getName() + ChatColor.GRAY + " joined the network.");
-        e.getPlayer().teleport(lobby);
-        e.getPlayer().getInventory().setItem(4, item(Material.COMPASS, "Game Selector", List.of("Right-click to choose a game", "Use /menu anytime")));
-        e.getPlayer().sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
+        Player p = e.getPlayer();
+        e.setJoinMessage(PREFIX + ChatColor.WHITE + p.getName() + ChatColor.GRAY + " joined the network.");
+        p.teleport(lobby);
+        p.getInventory().setItem(4, item(Material.COMPASS, "Game Selector", List.of("Right-click to choose a game", "Use /menu anytime")));
+        p.getInventory().setItem(8, item(Material.CLOCK, "Settings", List.of("Right-click to customize your lobby")));
+        p.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
+        updateTab(p);
+        for (Player online : Bukkit.getOnlinePlayers()) updateTab(online);
+    }
+
+    @EventHandler public void onMobSpawn(CreatureSpawnEvent e) {
+        if (inLobby(e.getLocation())) e.setCancelled(true);
     }
 
     @EventHandler public void onBreak(BlockBreakEvent e) {
@@ -106,10 +134,12 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     }
 
     @EventHandler public void onInteract(PlayerInteractEvent e) {
-        if (inLobby(e.getPlayer().getLocation()) && e.getItem() != null && e.getItem().getType() == Material.COMPASS
+        if (inLobby(e.getPlayer().getLocation()) && e.getItem() != null
+                && (e.getItem().getType() == Material.COMPASS || e.getItem().getType() == Material.CLOCK)
                 && (e.getAction() == org.bukkit.event.block.Action.RIGHT_CLICK_AIR || e.getAction() == org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK)) {
             e.setCancelled(true);
-            openMenu(e.getPlayer());
+            if (e.getItem().getType() == Material.COMPASS) openMenu(e.getPlayer());
+            else openSettings(e.getPlayer());
             return;
         }
         if (inLobby(e.getPlayer().getLocation()) && e.getClickedBlock() != null
@@ -126,27 +156,58 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     }
 
     private void openMenu(Player player) {
-        Inventory inv = Bukkit.createInventory(null, 27, ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA NETWORK");
+        Inventory inv = Bukkit.createInventory(null, 27, MENU_TITLE);
         inv.setItem(10, item(Material.GRASS_BLOCK, "Survival Map 1", List.of("Click to enter Survival I")));
         inv.setItem(11, item(Material.MOSS_BLOCK, "Survival Map 2", List.of("Click to enter Survival II")));
-        inv.setItem(13, item(Material.RED_BED, "BedWars", List.of("Two arena slots: Map 1 and Map 2", "Requires BedWars arena setup")));
-        inv.setItem(15, item(Material.GOLD_BLOCK, "Lucky Pillars", List.of("Two arena slots: Map 1 and Map 2", "Requires Lucky Pillars arena setup")));
+        inv.setItem(13, item(Material.RED_BED, "BedWars", List.of("Arena setup required before matches")));
+        inv.setItem(14, item(Material.IRON_SWORD, "Duels", List.of("CPvP and other kits - setup required")));
+        inv.setItem(15, item(Material.GOLD_BLOCK, "Lucky Pillars", List.of("Arena setup required before matches")));
         inv.setItem(22, item(Material.NETHER_STAR, "Lobby", List.of("Return to the protected lobby")));
         player.openInventory(inv);
     }
 
-    @EventHandler public void onMenuClick(org.bukkit.event.inventory.InventoryClickEvent e) {
+    private void openSettings(Player player) {
+        Inventory inv = Bukkit.createInventory(null, 27, SETTINGS_TITLE);
+        boolean hidden = playersHidden.getOrDefault(player.getUniqueId(), false);
+        inv.setItem(11, item(hidden ? Material.GRAY_DYE : Material.LIME_DYE, "Player Visibility: " + (hidden ? "OFF" : "ON"),
+                List.of("Click to toggle other players")));
+        inv.setItem(13, item(Material.ENDER_PEARL, "Random Teleport", List.of("Use /rtp in Survival")));
+        inv.setItem(15, item(Material.COMPASS, "Game Selector", List.of("Open the network game menu")));
+        inv.setItem(22, item(Material.BARRIER, "Close", List.of("Close settings")));
+        player.openInventory(inv);
+    }
+
+    @EventHandler public void onMenuClick(InventoryClickEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
-        if (!ChatColor.stripColor(e.getView().getTitle()).equals("NEBULA NETWORK")) return;
+        String title = e.getView().getTitle();
+        if (!title.equals(MENU_TITLE) && !title.equals(SETTINGS_TITLE)) return;
         e.setCancelled(true);
         int slot = e.getRawSlot();
         if (slot < 0 || slot >= e.getInventory().getSize()) return;
-        if (slot == 10) go(p, "survival_1");
-        if (slot == 11) go(p, "survival_2");
-        if (slot == 13) p.sendMessage(PREFIX + "BedWars arenas need to be created in the BedWars plugin before matches can start.");
-        if (slot == 15) p.sendMessage(PREFIX + "Lucky Pillars arenas need to be created in TheLuckPillars before matches can start.");
-        if (slot == 22) p.teleport(lobby);
-        p.closeInventory();
+        if (title.equals(MENU_TITLE)) {
+            if (slot == 10) go(p, "survival_1");
+            if (slot == 11) go(p, "survival_2");
+            if (slot == 13) p.sendMessage(PREFIX + "BedWars needs configured arenas before matches can start.");
+            if (slot == 14) p.sendMessage(PREFIX + "Duels needs its arena and kit setup before matches can start.");
+            if (slot == 15) p.sendMessage(PREFIX + "Lucky Pillars needs configured arenas before matches can start.");
+            if (slot == 22) p.teleport(lobby);
+            p.closeInventory();
+            return;
+        }
+        if (slot == 11) {
+            boolean hidden = !playersHidden.getOrDefault(p.getUniqueId(), false);
+            playersHidden.put(p.getUniqueId(), hidden);
+            for (Player other : Bukkit.getOnlinePlayers()) {
+                if (other.equals(p)) continue;
+                if (hidden) p.hidePlayer(this, other); else p.showPlayer(this, other);
+            }
+            p.sendMessage(PREFIX + "Player visibility: " + (hidden ? "OFF" : "ON"));
+            openSettings(p);
+        } else if (slot == 13) {
+            p.closeInventory();
+            p.performCommand("rtp");
+        } else if (slot == 15) openMenu(p);
+        else p.closeInventory();
     }
 
     private void go(Player p, String worldName) {
@@ -154,6 +215,26 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         if (world == null) { p.sendMessage(PREFIX + "That world is not ready."); return; }
         p.teleport(world.getSpawnLocation());
         p.sendMessage(PREFIX + "Welcome to " + ChatColor.LIGHT_PURPLE + worldName + ChatColor.GRAY + ".");
+    }
+
+    private void randomTeleport(Player p) {
+        World world = Bukkit.getWorld("survival_1");
+        if (world == null) { p.sendMessage(PREFIX + "Survival is not ready."); return; }
+        for (int attempt = 0; attempt < 40; attempt++) {
+            int x = random.nextInt(10001) - 5000;
+            int z = random.nextInt(10001) - 5000;
+            int y = world.getHighestBlockYAt(x, z) + 1;
+            if (y <= world.getMinHeight() || y + 1 >= world.getMaxHeight()) continue;
+            Block floor = world.getBlockAt(x, y - 1, z);
+            Block feet = world.getBlockAt(x, y, z);
+            Block head = world.getBlockAt(x, y + 1, z);
+            if (!floor.getType().isSolid() || floor.isLiquid() || !feet.isEmpty() || !head.isEmpty()) continue;
+            Location destination = new Location(world, x + 0.5, y, z + 0.5);
+            p.teleport(destination);
+            p.sendMessage(PREFIX + "Randomly teleported into Survival.");
+            return;
+        }
+        p.sendMessage(PREFIX + "Couldn't find a safe location. Try /rtp again.");
     }
 
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
@@ -170,6 +251,16 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         }
         if (command.getName().equalsIgnoreCase("spawn")) {
             if (sender instanceof Player p) p.teleport(lobby);
+            return true;
+        }
+        if (command.getName().equalsIgnoreCase("rtp")) {
+            if (sender instanceof Player p) randomTeleport(p);
+            else sender.sendMessage("Players only.");
+            return true;
+        }
+        if (command.getName().equalsIgnoreCase("settings")) {
+            if (sender instanceof Player p) openSettings(p);
+            else sender.sendMessage("Players only.");
             return true;
         }
         if (command.getName().equalsIgnoreCase("menu") || command.getName().equalsIgnoreCase("nebula")) {
