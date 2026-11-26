@@ -277,15 +277,6 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 (float) lastSurvival.getDouble(path + ".pitch"));
     }
 
-    @EventHandler public void onArenaExit(PlayerChangedWorldEvent e) {
-        scheduleArenaRegeneration(e.getFrom());
-    }
-
-    @EventHandler public void onArenaQuit(PlayerQuitEvent e) {
-        saveSurvivalLocation(e.getPlayer(), e.getPlayer().getWorld());
-        scheduleArenaRegeneration(e.getPlayer().getWorld());
-    }
-
     @EventHandler public void onArenaQuit(PlayerQuitEvent e) {
         saveSurvivalLocation(e.getPlayer(), e.getPlayer().getWorld());
         scheduleArenaRegeneration(e.getPlayer().getWorld());
