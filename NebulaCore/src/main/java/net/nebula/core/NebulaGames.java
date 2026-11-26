@@ -483,11 +483,19 @@ public final class NebulaGames implements Listener {
                 else if (slot == 22) leaveBedWarsQueue(player);
                 player.closeInventory();
             } else if (title.equals(DUEL_MENU)) {
-                if (slot == 11) queueDuel(player);
-                else if (slot == 13) startBotDuel(player);
-                else if (slot == 15) openKitEditor(player);
-                else if (slot == 22) leaveDuelQueue(player);
-                player.closeInventory();
+                if (slot == 11) {
+                    queueDuel(player);
+                    player.closeInventory();
+                } else if (slot == 13) {
+                    player.closeInventory();
+                    startBotDuel(player);
+                } else if (slot == 15) {
+                    player.closeInventory();
+                    openKitEditor(player);
+                } else if (slot == 22) {
+                    leaveDuelQueue(player);
+                    player.closeInventory();
+                }
             } else {
                 buyBedWarsItem(player, slot);
             }
@@ -714,6 +722,8 @@ public final class NebulaGames implements Listener {
         Entity entity = event.getEntity();
         String owner = entity.getPersistentDataContainer().get(botKey, PersistentDataType.STRING);
         if (owner == null) return;
+        event.getDrops().clear();
+        event.setDroppedExp(0);
         DuelMatch match = bots.remove(entity.getUniqueId());
         if (match == null || match.finished) return;
         UUID playerId;
@@ -786,6 +796,9 @@ public final class NebulaGames implements Listener {
 
     private void spawnLobbyNpcs() {
         World world = lobby.getWorld();
+        for (Entity entity : world.getEntities()) {
+            if (entity.getPersistentDataContainer().has(npcKey, PersistentDataType.STRING)) entity.remove();
+        }
         spawnNpc(world, lobby.clone().add(-5, 0, 0), "§cBedWars", "BEDWARS");
         spawnNpc(world, lobby.clone().add(-1.7, 0, 0), "§dDuels", "DUELS");
         spawnNpc(world, lobby.clone().add(1.7, 0, 0), "§aSurvival", "SURVIVAL");
