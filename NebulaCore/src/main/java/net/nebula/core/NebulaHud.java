@@ -325,7 +325,7 @@ public final class NebulaHud implements Listener {
             return;
         }
         var registry = CitizensAPI.getNPCRegistry();
-        for (NPC existing : new ArrayList<>(registry.getNPCs())) {
+        for (NPC existing : new ArrayList<NPC>() {{ for (NPC npc : registry) add(npc); }}) {
             if (existing.getName().startsWith("Nebula ")) existing.destroy();
         }
         npcActions.clear();
