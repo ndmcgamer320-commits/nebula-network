@@ -54,10 +54,7 @@ public final class NebulaGames implements Listener {
 
     public void enable() {
         Bukkit.getPluginManager().registerEvents(this, plugin);
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            spawnLobbyNpcs();
-            spawnBedWarsShops();
-        }, 30L);
+        Bukkit.getScheduler().runTaskLater(plugin, this::spawnBedWarsShops, 30L);
         Bukkit.getScheduler().runTaskTimer(plugin, this::runGenerators, 200L, 200L);
     }
 
