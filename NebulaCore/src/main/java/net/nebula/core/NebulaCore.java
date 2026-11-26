@@ -73,7 +73,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     }
 
     @EventHandler public void onJoin(PlayerJoinEvent e) {
-        e.joinMessage(PREFIX + ChatColor.WHITE + e.getPlayer().getName() + ChatColor.GRAY + " joined the network.");
+        e.setJoinMessage(PREFIX + ChatColor.WHITE + e.getPlayer().getName() + ChatColor.GRAY + " joined the network.");
         e.getPlayer().teleport(lobby);
         e.getPlayer().getInventory().setItem(4, item(Material.COMPASS, "Game Selector", List.of("Right-click to choose a game", "Use /menu anytime")));
         e.getPlayer().sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
