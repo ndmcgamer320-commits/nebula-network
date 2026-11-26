@@ -3,11 +3,6 @@ name: Run Nebula Network
 on:
   workflow_dispatch:
     inputs:
-      accept_minecraft_eula:
-        description: "I have read and agree to the Minecraft EULA"
-        required: true
-        type: boolean
-        default: false
       runtime_hours:
         description: "Server runtime (maximum 5 hours)"
         required: true
@@ -23,13 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
-      - name: Verify EULA and tunnel secret
+      - name: Verify committed EULA and tunnel secret
         env:
-          ACCEPT_EULA: ${{ inputs.accept_minecraft_eula }}
           PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
         run: |
-          if [ "$ACCEPT_EULA" != "true" ]; then
-            echo "::error::Read and accept the Minecraft EULA before starting."
+          if [ ! -f eula.txt ] || ! grep -qx 'eula=true' eula.txt; then
+            echo "::error::Read the Minecraft EULA and commit eula.txt containing eula=true."
             exit 1
           fi
           if [ -z "$PLAYIT_SECRET" ]; then
@@ -57,9 +51,6 @@ jobs:
           mvn -B -f NebulaCore/pom.xml package
           mkdir -p plugins
           cp NebulaCore/target/NebulaCore-1.0.0.jar plugins/
-
-      - name: Prepare server
-        run: echo "eula=true" > eula.txt
 
       - name: Start Playit tunnel
         env:
