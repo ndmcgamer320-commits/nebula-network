@@ -51,7 +51,7 @@ public final class ArenaBuilder {
         // Decorative outer markers.
         for (int[] pos : new int[][]{{-24,-10},{-24,10},{24,-10},{24,10}}) {
             set(world, pos[0], FLOOR_Y + 1, pos[1], Material.LANTERN);
-            set(world, pos[0], FLOOR_Y + 2, pos[1], Material.CHAIN);
+            set(world, pos[0], FLOOR_Y + 2, pos[1], Material.IRON_BARS);
         }
 
         world.setSpawnLocation(0, FLOOR_Y + 2, 0);
@@ -131,8 +131,8 @@ public final class ArenaBuilder {
     private static void bridge(World world, int fromX, int toX, Material material) {
         for (int x = fromX; x <= toX; x++) {
             for (int z = -1; z <= 1; z++) set(world, x, FLOOR_Y, z, material);
-            set(world, x, FLOOR_Y - 1, -2, Material.CHAIN);
-            set(world, x, FLOOR_Y - 1, 2, Material.CHAIN);
+            set(world, x, FLOOR_Y - 1, -2, Material.IRON_BARS);
+            set(world, x, FLOOR_Y - 1, 2, Material.IRON_BARS);
         }
     }
 
