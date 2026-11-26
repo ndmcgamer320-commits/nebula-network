@@ -24,6 +24,16 @@ commands:
   rtp:
     description: Teleport to a random safe location in Survival.
     usage: /rtp
+  bedwars:
+    description: Enter the Nebula BedWars map.
+    usage: /bedwars
+  duel:
+    description: Enter the Nebula Duel map.
+    usage: /duel
+  arenareset:
+    description: Regenerate the BedWars and Duel maps.
+    usage: /arenareset [bedwars|duel|all]
+    permission: nebulacore.admin
 permissions:
   nebulacore.admin:
     default: op
