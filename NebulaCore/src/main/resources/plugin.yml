@@ -13,7 +13,6 @@ commands:
   setlobby:
     description: Set the protected lobby spawn.
     usage: /setlobby
-    permission: nebulacore.admin
   nebula:
     description: Open the game selector.
     usage: /nebula
@@ -38,7 +37,6 @@ commands:
   arenareset:
     description: Regenerate the BedWars and Duel maps.
     usage: /arenareset [bedwars|duel|all]
-    permission: nebulacore.admin
 permissions:
   nebulacore.admin:
     default: op
