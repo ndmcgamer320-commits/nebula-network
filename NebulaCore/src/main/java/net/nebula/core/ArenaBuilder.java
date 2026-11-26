@@ -66,58 +66,71 @@ public final class ArenaBuilder {
 
     public static void buildDuel(World world) {
         if (world == null) return;
-        clear(world, -24, 92, -24, 24, 120, 24);
+        clear(world, -34, 88, -34, 34, 112, 34);
 
-        // Symmetrical circular CPvP-style fighting platform.
-        disk(world, 0, 0, FLOOR_Y - 1, 17, Material.POLISHED_DEEPSLATE);
-        disk(world, 0, 0, FLOOR_Y, 15, Material.DEEPSLATE_TILES);
-        ring(world, 0, 0, FLOOR_Y, 16, Material.PURPLE_CONCRETE);
-        ring(world, 0, 0, FLOOR_Y + 1, 16, Material.IRON_BARS);
+        // Layered overworld-style CPvP field: bedrock foundation, two stone
+        // layers, then a broad grass surface with scattered natural stone patches.
+        for (int x = -30; x <= 30; x++) {
+            for (int z = -30; z <= 30; z++) {
+                set(world, x, 93, z, Material.BEDROCK);
+                set(world, x, 94, z, Material.STONE);
+                set(world, x, 95, z, Material.STONE);
+                set(world, x, 96, z, Material.GRASS_BLOCK);
+            }
+        }
 
-        // Checker pattern inside the arena.
-        for (int x = -13; x <= 13; x++) {
-            for (int z = -13; z <= 13; z++) {
-                if (x * x + z * z <= 13 * 13) {
-                    Material tile = ((x + z) & 1) == 0
-                            ? Material.DEEPSLATE_TILES : Material.POLISHED_BLACKSTONE;
-                    set(world, x, FLOOR_Y, z, tile);
+        java.util.Random terrain = new java.util.Random(72121L);
+        for (int patch = 0; patch < 52; patch++) {
+            int cx = terrain.nextInt(51) - 25;
+            int cz = terrain.nextInt(51) - 25;
+            int radius = 1 + terrain.nextInt(3);
+            Material surface = patch % 3 == 0 ? Material.COBBLESTONE
+                    : (patch % 3 == 1 ? Material.STONE_BRICKS : Material.MOSSY_COBBLESTONE);
+            for (int x = -radius; x <= radius; x++) {
+                for (int z = -radius; z <= radius; z++) {
+                    if (x*x + z*z <= radius*radius && (cx+x)*(cx+x)+(cz+z)*(cz+z) < 27*27) {
+                        set(world, cx+x, 96, cz+z, surface);
+                    }
                 }
             }
         }
 
-        // Spawn pads at opposite ends.
-        disk(world, -10, 0, FLOOR_Y, 3, Material.PURPLE_CONCRETE);
-        disk(world, 10, 0, FLOOR_Y, 3, Material.CYAN_CONCRETE);
-        set(world, -10, FLOOR_Y + 1, 0, Material.SEA_LANTERN);
-        set(world, 10, FLOOR_Y + 1, 0, Material.SEA_LANTERN);
-
-        // Four corner pillars and a central marker.
-        for (int[] pos : new int[][]{{-12,-12},{-12,12},{12,-12},{12,12}}) {
-            pillar(world, pos[0], pos[1], FLOOR_Y + 1, 4, Material.PURPLE_CONCRETE);
-            set(world, pos[0], FLOOR_Y + 5, pos[1], Material.END_ROD);
+        // Low stone outcrops add cover without turning the arena into a maze.
+        for (int[] p : new int[][]{{-5,-8},{5,8},{-8,5},{8,-5},{0,-18},{0,18}}) {
+            disk(world, p[0], p[1], 97, 2, Material.STONE);
+            set(world, p[0], 98, p[1], Material.MOSSY_COBBLESTONE);
         }
-        set(world, 0, FLOOR_Y + 1, 0, Material.AMETHYST_BLOCK);
-        set(world, 0, FLOOR_Y + 2, 0, Material.END_ROD);
 
-        // Low boundary wall keeps the duel area readable and contained.
-        for (int x = -15; x <= 15; x++) {
-            for (int z = -15; z <= 15; z++) {
-                int r2 = x * x + z * z;
-                if (r2 >= 14 * 14 && r2 <= 15 * 15) {
-                    set(world, x, FLOOR_Y + 1, z, Material.PURPLE_STAINED_GLASS);
-                    set(world, x, FLOOR_Y + 2, z, Material.PURPLE_STAINED_GLASS);
-                }
+        // Symmetrical starting pads and a small central obsidian marker.
+        disk(world, -14, 0, 96, 3, Material.POLISHED_DEEPSLATE);
+        disk(world, 14, 0, 96, 3, Material.POLISHED_DEEPSLATE);
+        set(world, -14, 97, 0, Material.SEA_LANTERN);
+        set(world, 14, 97, 0, Material.SEA_LANTERN);
+        disk(world, 0, 0, 96, 2, Material.OBSIDIAN);
+        set(world, 0, 97, 0, Material.AMETHYST_BLOCK);
+
+        // Visible bedrock rim plus a strict vanilla world border.
+        for (int v = -30; v <= 30; v++) {
+            for (int y = 97; y <= 101; y++) {
+                set(world, -30, y, v, Material.BEDROCK);
+                set(world, 30, y, v, Material.BEDROCK);
+                set(world, v, y, -30, Material.BEDROCK);
+                set(world, v, y, 30, Material.BEDROCK);
             }
         }
 
-        world.setSpawnLocation(0, FLOOR_Y + 3, 0);
+        world.setSpawnLocation(0, 97, 0);
         world.setTime(6000);
         world.setStorm(false);
         world.setThundering(false);
         world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, false);
         world.setGameRule(org.bukkit.GameRule.DO_WEATHER_CYCLE, false);
+        world.setGameRule(org.bukkit.GameRule.DO_FIRE_TICK, false);
         world.getWorldBorder().setCenter(0, 0);
-        world.getWorldBorder().setSize(64);
+        world.getWorldBorder().setSize(60);
+        world.getWorldBorder().setDamageAmount(10.0);
+        world.getWorldBorder().setDamageBuffer(0.0);
+        world.getWorldBorder().setWarningDistance(4);
     }
 
     private static void island(World world, int cx, int cz, Material top, Material edge) {
