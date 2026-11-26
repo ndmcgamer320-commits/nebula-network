@@ -35,6 +35,7 @@ jobs:
             duel_arena/
             plugins/NebulaCore/
             lobby-imported.flag
+            ops.json
           key: nebula-server-state-${{ github.run_id }}
           restore-keys: |
             nebula-server-state-
