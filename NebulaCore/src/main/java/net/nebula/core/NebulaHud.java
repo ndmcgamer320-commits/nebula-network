@@ -24,7 +24,7 @@ public final class NebulaHud implements Listener {
     private static final String PREFIX = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA " + ChatColor.LIGHT_PURPLE + "» " + ChatColor.GRAY;
     private static final String LEADERBOARD_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "TOP PLAYTIME";
     private final NebulaCore plugin;
-    private final Location lobby;
+    private Location lobby;
     private final NamespacedKey leaderboardKey;
     private final Map<Integer, String> npcActions = new HashMap<>();
     private final Map<UUID, Scoreboard> scoreboards = new HashMap<>();
@@ -34,6 +34,16 @@ public final class NebulaHud implements Listener {
         this.plugin = plugin;
         this.lobby = lobby.clone();
         this.leaderboardKey = new NamespacedKey(plugin, "playtime_leaderboard");
+    }
+
+    public void updateLobby(Location newLobby) {
+        this.lobby = newLobby.clone();
+    }
+
+    public void refreshPlayer(Player player) {
+        if (isLobby(player.getLocation())) applySpawnEffects(player);
+        updateTab(player);
+        updateSidebar(player);
     }
 
     public void enable() {
@@ -302,6 +312,13 @@ public final class NebulaHud implements Listener {
     }
 
     private void spawnLobbyNpcs() {
+        NamespacedKey legacyKey = new NamespacedKey(plugin, "nebula_npc");
+        for (Entity entity : lobby.getWorld().getNearbyEntities(lobby, 60, 30, 60)) {
+            if (entity.getType() == EntityType.VILLAGER
+                    && entity.getPersistentDataContainer().has(legacyKey, PersistentDataType.STRING)) {
+                entity.remove();
+            }
+        }
         if (Bukkit.getPluginManager().getPlugin("Citizens") == null
                 || !Bukkit.getPluginManager().getPlugin("Citizens").isEnabled()) {
             plugin.getLogger().warning("Citizens is missing; skinned lobby NPCs were not created.");
