@@ -6,6 +6,9 @@ import java.util.HashMap;
 import java.util.Random;
 import java.util.UUID;
 import java.io.File;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.event.entity.EntityPickupItemEvent;
+import fr.xephi.authme.api.v3.AuthMeApi;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -42,21 +45,39 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     private final Random random = new Random();
     private NebulaGames games;
     private NebulaHud hud;
-    private boolean importedLobby;
+    private File lastSurvivalFile;
+    private YamlConfiguration lastSurvival;
     private static final String PREFIX = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA " + ChatColor.LIGHT_PURPLE + "» " + ChatColor.GRAY;
     private static final String MENU_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA NETWORK";
     private static final String SETTINGS_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA SETTINGS";
 
     @Override
     public void onEnable() {
-        importedLobby = new File("lobby-imported.flag").isFile();
+        // Multiverse-Core creates and manages a dedicated empty lobby world.
+        World lobbyWorld = Bukkit.getWorld("lobby");
+        if (lobbyWorld == null) {
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mv create lobby normal -g VoidWorldGenerator");
+            lobbyWorld = Bukkit.getWorld("lobby");
+        }
+        if (lobbyWorld == null) {
+            getLogger().severe("Multiverse could not create the void lobby. Check Multiverse-Core and VoidWorldGenerator.");
+            Bukkit.getPluginManager().disablePlugin(this);
+            return;
+        }
+
         lobby = loadLobby();
-        for (String name : List.of("survival_1", "survival_2", "bedwars_1", "bedwars_2", "pillars_1", "pillars_2", "duel_arena")) {
+        for (String name : List.of("survival_1", "survival_2", "bedwars_1", "bedwars_2",
+                "pillars_1", "pillars_2", "duel_arena")) {
             World world = Bukkit.getWorld(name);
             if (world == null) world = Bukkit.createWorld(new WorldCreator(name));
             if (world != null) world.setGameRule(org.bukkit.GameRule.DO_IMMEDIATE_RESPAWN, true);
         }
-        if (!importedLobby) buildLobby();
+
+        lastSurvivalFile = new File(getDataFolder(), "last-survival.yml");
+        if (lastSurvivalFile.exists()) lastSurvival = YamlConfiguration.loadConfiguration(lastSurvivalFile);
+        else lastSurvival = new YamlConfiguration();
+
+        buildLobby();
         applyLobbyBorder();
         Bukkit.getPluginManager().registerEvents(this, this);
         games = new NebulaGames(this, lobby);
@@ -66,10 +87,10 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         Bukkit.getScheduler().runTaskLater(this, () -> {
             regenerateArena(Bukkit.getWorld("bedwars_1"), "bedwars_1");
             regenerateArena(Bukkit.getWorld("duel_arena"), "duel_arena");
-            getLogger().info("Network worlds loaded. Lobby HUD and NPCs enabled.");
+            getLogger().info("Multiverse void lobby and separate game worlds are ready.");
         }, 20L);
         for (Player p : Bukkit.getOnlinePlayers()) hud.refreshPlayer(p);
-        getLogger().info("NebulaCore enabled with the imported/custom lobby, ranks and scoreboard.");
+        getLogger().info("NebulaCore enabled with AuthMe authentication, Multiverse worlds and rank HUD.");
     }
 
     private void buildLobby() {
@@ -121,20 +142,23 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         if (lobby==null||lobby.getWorld()==null) return;
         org.bukkit.WorldBorder border=lobby.getWorld().getWorldBorder();
         border.setCenter(lobby.getX(),lobby.getZ());
-        border.setSize(importedLobby ? 94.0 : 84.0);
+        border.setSize(84.0);
         border.setDamageBuffer(0.0);
         border.setDamageAmount(2.0);
         border.setWarningDistance(5);
     }
 
     private Location loadLobby() {
-        World world=Bukkit.getWorld("world");
-        if(importedLobby&&world!=null) return world.getSpawnLocation().clone().add(0.5,1.0,0.5);
-        if(!getConfig().contains("lobby.world")) return Bukkit.getWorlds().get(0).getSpawnLocation().add(0.5,1,0.5);
-        world=Bukkit.getWorld(getConfig().getString("lobby.world","world"));
-        if(world==null) return Bukkit.getWorlds().get(0).getSpawnLocation().add(0.5,1,0.5);
-        return new Location(world,getConfig().getDouble("lobby.x"),getConfig().getDouble("lobby.y"),
-                getConfig().getDouble("lobby.z"),(float)getConfig().getDouble("lobby.yaw"),(float)getConfig().getDouble("lobby.pitch"));
+        World world = Bukkit.getWorld("lobby");
+        if (world == null) world = Bukkit.getWorlds().get(0);
+        if (getConfig().getString("lobby.world", "lobby").equals("lobby") && getConfig().contains("lobby.x")) {
+            return new Location(world, getConfig().getDouble("lobby.x"), getConfig().getDouble("lobby.y"),
+                    getConfig().getDouble("lobby.z"), (float) getConfig().getDouble("lobby.yaw"),
+                    (float) getConfig().getDouble("lobby.pitch"));
+        }
+        Location spawn = world.getSpawnLocation();
+        return new Location(world, spawn.getBlockX() + 0.5, spawn.getBlockY() + 1.0,
+                spawn.getBlockZ() + 0.5, spawn.getYaw(), spawn.getPitch());
     }
 
     private boolean inLobby(Location loc) {
@@ -162,10 +186,9 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             return;
         }
 
-        // A name-only unlock is safe only when Mojang account authentication is enabled.
-        if (!Bukkit.getOnlineMode()) {
-            player.sendMessage(PREFIX + ChatColor.RED + "Owner unlock is disabled while online-mode authentication is off.");
-            getLogger().warning("Blocked owner unlock because online-mode is disabled.");
+        AuthMeApi authMe = AuthMeApi.getInstance();
+        if (authMe == null || !authMe.isAuthenticated(player)) {
+            player.sendMessage(PREFIX + ChatColor.RED + "Register or log in first. Owner access is only available after AuthMe verifies your session.");
             return;
         }
 
@@ -173,20 +196,88 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         getConfig().set("ranks." + player.getUniqueId(), "OWNER");
         saveConfig();
         if (hud != null) hud.refreshPlayer(player);
-
+        Bukkit.broadcastMessage(PREFIX + ChatColor.GOLD + "The network owner has joined.");
         player.sendMessage(PREFIX + ChatColor.GOLD + "Owner access enabled. You are now OP and ranked OWNER.");
-        getLogger().info("Authenticated toxic__cpvp account used the in-game owner unlock.");
+        getLogger().info("AuthMe-authenticated toxic__cpvp account used the in-game owner unlock.");
     }
 
     @EventHandler public void onJoin(PlayerJoinEvent e) {
         Player p = e.getPlayer();
         e.setJoinMessage(PREFIX + ChatColor.WHITE + p.getName() + ChatColor.GRAY + " joined the network.");
         p.teleport(lobby);
-        p.getInventory().setItem(4, item(Material.COMPASS, "Game Selector", List.of("Right-click to choose a game", "Use /menu anytime")));
-        p.getInventory().setItem(8, item(Material.CLOCK, "Settings", List.of("Right-click to customize your lobby")));
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (!p.isOnline() || !p.getWorld().equals(lobby.getWorld())) return;
+            giveLobbyLoadout(p);
+            if (hud != null) hud.refreshPlayer(p);
+        }, 2L);
         p.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
-        hud.refreshPlayer(p);
-        for (Player online : Bukkit.getOnlinePlayers()) hud.refreshPlayer(online);
+        if (hud != null) hud.refreshPlayer(p);
+    }
+
+    private void giveLobbyLoadout(Player player) {
+        player.getInventory().clear();
+        player.getInventory().setArmorContents(null);
+        player.getInventory().setItemInOffHand(null);
+        player.setGameMode(org.bukkit.GameMode.ADVENTURE);
+        player.getInventory().setItem(4, item(Material.COMPASS, "Game Selector",
+                List.of("Right-click to choose a game", "Use /menu anytime")));
+        player.getInventory().setItem(8, item(Material.CLOCK, "Settings",
+                List.of("Right-click to customize your lobby")));
+        player.updateInventory();
+    }
+
+    @EventHandler public void onWorldChange(PlayerChangedWorldEvent e) {
+        Player player = e.getPlayer();
+        saveSurvivalLocation(player, e.getFrom());
+        if (player.getWorld().equals(lobby.getWorld())) {
+            Bukkit.getScheduler().runTaskLater(this, () -> {
+                if (player.isOnline() && player.getWorld().equals(lobby.getWorld())) {
+                    giveLobbyLoadout(player);
+                    if (hud != null) hud.refreshPlayer(player);
+                }
+            }, 2L);
+        }
+    }
+
+    private boolean isSurvivalWorld(World world) {
+        return world != null && (world.getName().equals("survival_1") || world.getName().equals("survival_2"));
+    }
+
+    private void saveSurvivalLocation(Player player, World world) {
+        if (!isSurvivalWorld(world)) return;
+        Location location = player.getLocation();
+        String path = player.getUniqueId() + "." + world.getName();
+        lastSurvival.set(path + ".x", location.getX());
+        lastSurvival.set(path + ".y", location.getY());
+        lastSurvival.set(path + ".z", location.getZ());
+        lastSurvival.set(path + ".yaw", location.getYaw());
+        lastSurvival.set(path + ".pitch", location.getPitch());
+        try {
+            lastSurvival.save(lastSurvivalFile);
+        } catch (java.io.IOException ex) {
+            getLogger().warning("Could not save last Survival location for " + player.getName() + ": " + ex.getMessage());
+        }
+    }
+
+    private Location getLastSurvivalLocation(Player player, World world) {
+        String path = player.getUniqueId() + "." + world.getName();
+        if (!lastSurvival.contains(path + ".x")) return world.getSpawnLocation();
+        return new Location(world, lastSurvival.getDouble(path + ".x"), lastSurvival.getDouble(path + ".y"),
+                lastSurvival.getDouble(path + ".z"), (float) lastSurvival.getDouble(path + ".yaw"),
+                (float) lastSurvival.getDouble(path + ".pitch"));
+    }
+
+    @EventHandler public void onArenaExit(PlayerChangedWorldEvent e) {
+        scheduleArenaRegeneration(e.getFrom());
+    }
+
+    @EventHandler public void onArenaQuit(PlayerQuitEvent e) {
+        saveSurvivalLocation(e.getPlayer(), e.getPlayer().getWorld());
+        scheduleArenaRegeneration(e.getPlayer().getWorld());
+    }
+
+    @EventHandler public void onLobbyPickup(EntityPickupItemEvent e) {
+        if (e.getEntity() instanceof Player player && inLobby(player.getLocation())) e.setCancelled(true);
     }
 
     @EventHandler public void onArenaExit(PlayerChangedWorldEvent e) {
@@ -218,7 +309,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         if (to == null || lobby == null || to.getWorld() == null || !to.getWorld().equals(lobby.getWorld())) return;
         double dx = to.getX() - lobby.getX();
         double dz = to.getZ() - lobby.getZ();
-        double safeRadius = importedLobby ? 46.5 : 42.5;
+        double safeRadius = 41.5;
         if (dx * dx + dz * dz > safeRadius * safeRadius) {
             e.setTo(e.getFrom());
             if (e.getFrom().distanceSquared(lobby) <= safeRadius * safeRadius) {
@@ -354,8 +445,13 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     private void go(Player p, String worldName) {
         World world = Bukkit.getWorld(worldName);
         if (world == null) { p.sendMessage(PREFIX + "That world is not ready."); return; }
-        p.teleport(world.getSpawnLocation());
+        p.setGameMode(org.bukkit.GameMode.SURVIVAL);
+        p.teleport(getLastSurvivalLocation(p, world));
         p.sendMessage(PREFIX + "Welcome to " + ChatColor.LIGHT_PURPLE + worldName + ChatColor.GRAY + ".");
+    }
+
+    public void teleportToSurvival(Player player, String worldName) {
+        go(player, worldName);
     }
 
     private boolean hasNetworkAdmin(CommandSender sender) {
