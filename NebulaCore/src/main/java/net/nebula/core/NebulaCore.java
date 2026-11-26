@@ -26,6 +26,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -108,6 +109,18 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         p.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
         updateTab(p);
         for (Player online : Bukkit.getOnlinePlayers()) updateTab(online);
+    }
+
+    @EventHandler public void onArenaExit(PlayerChangedWorldEvent e) {
+        World departed = e.getFrom();
+        String name = departed.getName();
+        if (!name.equals("bedwars_1") && !name.equals("duel_arena")) return;
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (!departed.getPlayers().isEmpty()) return;
+            if (name.equals("bedwars_1")) ArenaBuilder.buildBedWars(departed);
+            else ArenaBuilder.buildDuel(departed);
+            getLogger().info("Automatically regenerated empty arena: " + name);
+        }, 20L);
     }
 
     @EventHandler public void onMobSpawn(CreatureSpawnEvent e) {
@@ -222,7 +235,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         World world = Bukkit.getWorld("bedwars_1");
         if (world == null) { p.sendMessage(PREFIX + "BedWars map is not ready. Ask an admin to run /arenareset bedwars."); return; }
         int x = (bedWarsJoinCounter++ % 2 == 0) ? -24 : 24;
-        p.teleport(new Location(world, x + 0.5, 100, 0.5));
+        p.teleport(new Location(world, x + 0.5, 100, 4.5));
         p.setFallDistance(0);
         p.sendMessage(PREFIX + "Entered the BedWars sky arena. This is the map preview; match queues and bed-protection rules are not enabled yet.");
     }
@@ -231,7 +244,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         World world = Bukkit.getWorld("duel_arena");
         if (world == null) { p.sendMessage(PREFIX + "Duel map is not ready. Ask an admin to run /arenareset duel."); return; }
         int x = (duelJoinCounter++ % 2 == 0) ? -10 : 10;
-        p.teleport(new Location(world, x + 0.5, 100, 0.5));
+        p.teleport(new Location(world, x + 0.5, 100, 3.5));
         p.setFallDistance(0);
         p.sendMessage(PREFIX + "Entered the Duel arena. The map is ready; duel matchmaking and kits are not enabled yet.");
     }
