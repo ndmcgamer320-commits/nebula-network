@@ -1,0 +1,13 @@
+*.jar
+*.log
+*.pid
+eula.txt
+paper.jar
+world/
+world_nether/
+world_the_end/
+world_*/
+plugins/*/
+!plugins/README.md
+target/
+.DS_Store
