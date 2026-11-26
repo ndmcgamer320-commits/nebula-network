@@ -31,7 +31,6 @@ public final class NebulaCore extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
-        saveDefaultConfig();
         lobby = loadLobby();
         for (String name : List.of("survival_1", "survival_2", "bedwars_1", "bedwars_2", "pillars_1", "pillars_2")) {
             World world = Bukkit.getWorld(name);
@@ -49,6 +48,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         int y = lobby.getBlockY() - 1;
         int cx = lobby.getBlockX(), cz = lobby.getBlockZ();
         for (int x = -16; x <= 16; x++) for (int z = -16; z <= 16; z++) {
+            for (int h = 1; h <= 12; h++) w.getBlockAt(cx + x, y + h, cz + z).setType(Material.AIR, false);
             Material floor = (Math.abs(x) == 16 || Math.abs(z) == 16) ? Material.PURPLE_CONCRETE : ((Math.abs(x) % 2 == 0 && Math.abs(z) % 2 == 0) ? Material.POLISHED_BLACKSTONE : Material.BLACK_CONCRETE);
             w.getBlockAt(cx + x, y, cz + z).setType(floor, false);
         }
