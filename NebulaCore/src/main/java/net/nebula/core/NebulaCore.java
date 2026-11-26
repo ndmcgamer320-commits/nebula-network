@@ -216,13 +216,14 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         int slot = e.getRawSlot();
         if (slot < 0 || slot >= e.getInventory().getSize()) return;
         if (title.equals(MENU_TITLE)) {
-            if (slot == 10) go(p, "survival_1");
-            if (slot == 11) go(p, "survival_2");
-            if (slot == 13) games.openBedWarsMenu(p);
-            if (slot == 14) games.openDuelMenu(p);
-            if (slot == 15) p.sendMessage(PREFIX + "Lucky Pillars needs configured arenas before matches can start.");
-            if (slot == 22) p.teleport(lobby);
-            p.closeInventory();
+            if (slot == 10) { p.closeInventory(); go(p, "survival_1"); }
+            else if (slot == 11) { p.closeInventory(); go(p, "survival_2"); }
+            else if (slot == 13) { p.closeInventory(); games.openBedWarsMenu(p); }
+            else if (slot == 14) { p.closeInventory(); games.openDuelMenu(p); }
+            else if (slot == 15) {
+                p.closeInventory();
+                p.sendMessage(PREFIX + "Lucky Pillars is not configured yet.");
+            } else if (slot == 22) { p.closeInventory(); p.teleport(lobby); }
             return;
         }
         if (slot == 11) {
