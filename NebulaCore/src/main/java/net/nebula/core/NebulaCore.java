@@ -38,6 +38,11 @@ import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.Sound;
+import org.bukkit.Particle;
+import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class NebulaCore extends JavaPlugin implements Listener {
@@ -203,16 +208,62 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     }
 
     @EventHandler public void onJoin(PlayerJoinEvent e) {
-        Player p = e.getPlayer();
-        e.setJoinMessage(PREFIX + ChatColor.WHITE + p.getName() + ChatColor.GRAY + " joined the network.");
-        p.teleport(lobby);
+        Player player = e.getPlayer();
+        e.setJoinMessage(null);
+        waitForAuthentication(player);
+    }
+
+    private void waitForAuthentication(Player player) {
+        new BukkitRunnable() {
+            private int waitedTicks = 0;
+            @Override public void run() {
+                if (!player.isOnline()) { cancel(); return; }
+                AuthMeApi authMe = AuthMeApi.getInstance();
+                if (authMe != null && authMe.isAuthenticated(player)) {
+                    returnPlayerToLobby(player);
+                    player.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
+                    Bukkit.broadcastMessage(PREFIX + ChatColor.WHITE + player.getName() + ChatColor.GRAY + " joined the network.");
+                    cancel();
+                    return;
+                }
+                waitedTicks += 5;
+                if (waitedTicks >= 1800) cancel();
+            }
+        }.runTaskTimer(this, 1L, 5L);
+    }
+
+    public void returnPlayerToLobby(Player player) {
+        if (player == null || !player.isOnline()) return;
+        player.teleport(lobby);
         Bukkit.getScheduler().runTaskLater(this, () -> {
-            if (!p.isOnline() || !p.getWorld().equals(lobby.getWorld())) return;
-            giveLobbyLoadout(p);
-            if (hud != null) hud.refreshPlayer(p);
+            if (!player.isOnline() || !player.getWorld().equals(lobby.getWorld())) return;
+            giveLobbyLoadout(player);
+            if (hud != null) {
+                hud.refreshPlayer(player);
+                hud.setNameTagsVisible(player, getPlayerSetting(player, "nametags", true));
+                for (Player viewer : Bukkit.getOnlinePlayers()) {
+                    hud.setNameTagsVisible(viewer, getPlayerSetting(viewer, "nametags", true));
+                }
+            }
+            if (getPlayerSetting(player, "lobby-particles", true)) {
+                player.spawnParticle(Particle.END_ROD, player.getLocation().clone().add(0, 1.0, 0), 12, 0.35, 0.5, 0.35, 0.01);
+            }
         }, 2L);
-        p.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
-        if (hud != null) hud.refreshPlayer(p);
+    }
+
+    private boolean getPlayerSetting(Player player, String key, boolean defaultValue) {
+        return getConfig().getBoolean("player-settings." + player.getUniqueId() + "." + key, defaultValue);
+    }
+
+    private void setPlayerSetting(Player player, String key, boolean value) {
+        getConfig().set("player-settings." + player.getUniqueId() + "." + key, value);
+        saveConfig();
+    }
+
+    private void playSettingsSound(Player player) {
+        if (getPlayerSetting(player, "menu-sounds", true)) {
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.65f, 1.2f);
+        }
     }
 
     private void giveLobbyLoadout(Player player) {
@@ -280,6 +331,16 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     @EventHandler public void onArenaQuit(PlayerQuitEvent e) {
         saveSurvivalLocation(e.getPlayer(), e.getPlayer().getWorld());
         scheduleArenaRegeneration(e.getPlayer().getWorld());
+    }
+
+    @EventHandler public void onLobbyInventoryClick(InventoryClickEvent e) {
+        if (!(e.getWhoClicked() instanceof Player player) || !inLobby(player.getLocation())) return;
+        if (e.getView().getTopInventory().getType() == InventoryType.CRAFTING
+                && !player.hasPermission("nebulacore.admin")) e.setCancelled(true);
+    }
+
+    @EventHandler public void onLobbySwapHand(PlayerSwapHandItemsEvent e) {
+        if (inLobby(e.getPlayer().getLocation())) e.setCancelled(true);
     }
 
     @EventHandler public void onLobbyPickup(EntityPickupItemEvent e) {
@@ -377,11 +438,20 @@ public final class NebulaCore extends JavaPlugin implements Listener {
 
     private void openSettings(Player player) {
         Inventory inv = Bukkit.createInventory(null, 27, SETTINGS_TITLE);
+        boolean nameTags = getPlayerSetting(player, "nametags", true);
         boolean hidden = playersHidden.getOrDefault(player.getUniqueId(), false);
-        inv.setItem(11, item(hidden ? Material.GRAY_DYE : Material.LIME_DYE, "Player Visibility: " + (hidden ? "OFF" : "ON"),
-                List.of("Click to toggle other players")));
-        inv.setItem(13, item(Material.ENDER_PEARL, "Random Teleport", List.of("Use /rtp in Survival")));
-        inv.setItem(15, item(Material.COMPASS, "Game Selector", List.of("Open the network game menu")));
+        boolean particles = getPlayerSetting(player, "lobby-particles", true);
+        boolean sounds = getPlayerSetting(player, "menu-sounds", true);
+        inv.setItem(10, item(nameTags ? Material.NAME_TAG : Material.PAPER,
+                "Player Name Tags: " + (nameTags ? "ON" : "OFF"), List.of("Show or hide player names above heads")));
+        inv.setItem(11, item(hidden ? Material.GRAY_DYE : Material.LIME_DYE,
+                "Player Visibility: " + (hidden ? "OFF" : "ON"), List.of("Click to toggle other players")));
+        inv.setItem(12, item(particles ? Material.FIREWORK_STAR : Material.GUNPOWDER,
+                "Lobby Particles: " + (particles ? "ON" : "OFF"), List.of("Toggle decorative lobby particles")));
+        inv.setItem(13, item(sounds ? Material.NOTE_BLOCK : Material.BARRIER,
+                "Menu Sounds: " + (sounds ? "ON" : "OFF"), List.of("Toggle menu click sounds")));
+        inv.setItem(15, item(Material.ENDER_PEARL, "Random Teleport", List.of("Use /rtp in Survival")));
+        inv.setItem(17, item(Material.COMPASS, "Game Selector", List.of("Open the network game menu")));
         inv.setItem(22, item(Material.BARRIER, "Close", List.of("Close settings")));
         player.openInventory(inv);
     }
@@ -404,7 +474,14 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             } else if (slot == 22) { p.closeInventory(); p.teleport(lobby); }
             return;
         }
-        if (slot == 11) {
+        if (slot == 10) {
+            boolean enabled = !getPlayerSetting(p, "nametags", true);
+            setPlayerSetting(p, "nametags", enabled);
+            if (hud != null) hud.setNameTagsVisible(p, enabled);
+            p.sendMessage(PREFIX + "Player name tags: " + (enabled ? "ON" : "OFF"));
+            playSettingsSound(p);
+            openSettings(p);
+        } else if (slot == 11) {
             boolean hidden = !playersHidden.getOrDefault(p.getUniqueId(), false);
             playersHidden.put(p.getUniqueId(), hidden);
             for (Player other : Bukkit.getOnlinePlayers()) {
@@ -412,12 +489,25 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 if (hidden) p.hidePlayer(this, other); else p.showPlayer(this, other);
             }
             p.sendMessage(PREFIX + "Player visibility: " + (hidden ? "OFF" : "ON"));
+            playSettingsSound(p);
+            openSettings(p);
+        } else if (slot == 12) {
+            boolean enabled = !getPlayerSetting(p, "lobby-particles", true);
+            setPlayerSetting(p, "lobby-particles", enabled);
+            playSettingsSound(p);
             openSettings(p);
         } else if (slot == 13) {
+            boolean enabled = !getPlayerSetting(p, "menu-sounds", true);
+            setPlayerSetting(p, "menu-sounds", enabled);
+            if (enabled) playSettingsSound(p);
+            openSettings(p);
+        } else if (slot == 15) {
             p.closeInventory();
             p.performCommand("rtp");
-        } else if (slot == 15) openMenu(p);
-        else p.closeInventory();
+        } else if (slot == 17) {
+            playSettingsSound(p);
+            openMenu(p);
+        } else p.closeInventory();
     }
 
     private void regenerateArena(World world, String arena) {
@@ -491,10 +581,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             return true;
         }
         if (command.getName().equalsIgnoreCase("spawn")) {
-            if (sender instanceof Player p) {
-                p.teleport(lobby);
-                if (hud != null) hud.refreshPlayer(p);
-            }
+            if (sender instanceof Player p) returnPlayerToLobby(p);
             return true;
         }
         if (command.getName().equalsIgnoreCase("rtp")) {
