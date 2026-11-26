@@ -54,7 +54,7 @@ public final class ArenaBuilder {
             set(world, pos[0], FLOOR_Y + 2, pos[1], Material.CHAIN);
         }
 
-        world.setSpawnLocation(0, FLOOR_Y + 1, 0);
+        world.setSpawnLocation(0, FLOOR_Y + 2, 0);
         world.setTime(6000);
         world.setStorm(false);
         world.setThundering(false);
@@ -110,7 +110,7 @@ public final class ArenaBuilder {
             }
         }
 
-        world.setSpawnLocation(0, FLOOR_Y + 2, 0);
+        world.setSpawnLocation(0, FLOOR_Y + 3, 0);
         world.setTime(6000);
         world.setStorm(false);
         world.setThundering(false);
