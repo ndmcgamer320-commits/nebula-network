@@ -1,12 +1,16 @@
 # Game plugins and maps
 
-NebulaCore is built by the workflow and provides the protected lobby, world creation, join routing and game selector.
+NebulaCore is built automatically by the workflow. It provides the protected lobby, game selector, and two generated Survival starter worlds.
 
-## Important: minigame status
+## BedWars and Lucky Pillars
 
-The workflow does **not** silently install random third-party plugin binaries. BedWars and Lucky Pillars require their own compatible game engines and arena configuration. The six worlds created by NebulaCore are clean starting worlds, not pre-built minigame maps.
+The selector has entries reserved for BedWars and Lucky Pillars, but these modes are **not playable yet**. Each requires:
 
-- BedWars: ScreamingBedWars documents support for Paper/Spigot through 1.21.11: https://github.com/hemangsrr/ScreamingBedWars
-- Lucky Pillars: TheLuckPillars documents testing on Paper 1.21.11: https://modrinth.com/mod/theluckpillars
+1. A Paper-compatible minigame plugin that explicitly supports Paper 1.21.11.
+2. Two arena maps designed for that plugin.
+3. Arena configuration, team/spawn points, lobby settings, and game rules.
+4. A test run with multiple players before opening the mode to everyone.
 
-Review each project's license, release files, setup instructions and compatibility before adding its JAR. Configure two arenas/maps inside the game plugin after importing or building the maps. Do not place downloaded plugin JARs in this Git repository; add them to the server at runtime or as workflow artifacts.
+Do not download random plugin JARs or commit binary plugin files to this repository. Check each plugin's official project page, supported server versions, license, and setup documentation before using it. Import arena maps through the plugin's documented process.
+
+The current workflow creates six named worlds (two Survival starter worlds and four empty arena world slots are reserved by naming convention only if added later). The two BedWars and two Lucky Pillars maps still need to be built or imported and registered in their respective plugins.
