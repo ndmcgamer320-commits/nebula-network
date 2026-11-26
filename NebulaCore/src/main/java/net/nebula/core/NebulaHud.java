@@ -46,6 +46,19 @@ public final class NebulaHud implements Listener {
         updateSidebar(player);
     }
 
+    public void setNameTagsVisible(Player viewer, boolean visible) {
+        Scoreboard board = scoreboards.computeIfAbsent(viewer.getUniqueId(),
+                ignored -> Bukkit.getScoreboardManager().getNewScoreboard());
+        Team team = board.getTeam("nebula_names");
+        if (team == null) team = board.registerNewTeam("nebula_names");
+        team.setOption(Team.Option.NAME_TAG_VISIBILITY,
+                visible ? Team.OptionStatus.ALWAYS : Team.OptionStatus.NEVER);
+        for (Player other : Bukkit.getOnlinePlayers()) {
+            if (!other.equals(viewer) && !team.hasEntry(other.getName())) team.addEntry(other.getName());
+        }
+        if (viewer.getScoreboard() != board) viewer.setScoreboard(board);
+    }
+
     public void enable() {
         Bukkit.getPluginManager().registerEvents(this, plugin);
         Bukkit.getScheduler().runTaskLater(plugin, this::spawnLobbyNpcs, 40L);
