@@ -356,7 +356,7 @@ public final class NebulaGames implements Listener {
         items[0] = enchanted(new ItemStack(Material.NETHERITE_SWORD), "CPvP Blade");
         items[1] = new ItemStack(Material.OBSIDIAN, 32);
         items[2] = new ItemStack(Material.END_CRYSTAL, 16);
-        items[3] = new ItemStack(Material.ENDer_CHEST, 1);
+        items[3] = new ItemStack(Material.ENDER_CHEST, 1);
         items[4] = new ItemStack(Material.RESPAWN_ANCHOR, 8);
         items[5] = new ItemStack(Material.GLOWSTONE, 32);
         items[6] = new ItemStack(Material.ENDER_PEARL, 16);
