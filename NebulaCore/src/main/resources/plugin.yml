@@ -5,7 +5,11 @@ api-version: '1.21.11'
 author: Nebula Network
 description: Protected lobby, network HUD, ranks and NPCs.
 depend:
+  - AuthMe
   - Citizens
+  - Multiverse-Core
+  - Multiverse-Inventories
+  - VoidWorldGenerator
 commands:
   spawn:
     description: Return to the Nebula lobby.
