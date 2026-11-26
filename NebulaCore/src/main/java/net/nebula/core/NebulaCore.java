@@ -316,6 +316,10 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         p.sendMessage(PREFIX + "Welcome to " + ChatColor.LIGHT_PURPLE + worldName + ChatColor.GRAY + ".");
     }
 
+    private boolean hasNetworkAdmin(CommandSender sender) {
+        return sender.hasPermission("nebulacore.admin") || (hud != null && hud.isAdminRank(sender));
+    }
+
     private void randomTeleport(Player p) {
         World world = Bukkit.getWorld("survival_1");
         if (world == null) { p.sendMessage(PREFIX + "Survival is not ready."); return; }
@@ -339,7 +343,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (command.getName().equalsIgnoreCase("setlobby")) {
             if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
-            if (!p.hasPermission("nebulacore.admin")) { p.sendMessage(PREFIX + "No permission."); return true; }
+            if (!hasNetworkAdmin(p)) { p.sendMessage(PREFIX + "No permission."); return true; }
             lobby = p.getLocation();
             getConfig().set("lobby.world", lobby.getWorld().getName());
             getConfig().set("lobby.x", lobby.getX()); getConfig().set("lobby.y", lobby.getY()); getConfig().set("lobby.z", lobby.getZ());
@@ -371,7 +375,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             return true;
         }
         if (command.getName().equalsIgnoreCase("arenareset")) {
-            if (!sender.hasPermission("nebulacore.admin")) { sender.sendMessage(PREFIX + "No permission."); return true; }
+            if (!hasNetworkAdmin(sender)) { sender.sendMessage(PREFIX + "No permission."); return true; }
             String target = args.length == 0 ? "all" : args[0].toLowerCase();
             if (!target.equals("all") && !target.equals("bedwars") && !target.equals("duel")) {
                 sender.sendMessage(PREFIX + "Usage: /arenareset [bedwars|duel|all]");
