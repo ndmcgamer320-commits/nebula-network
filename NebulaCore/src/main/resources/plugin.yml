@@ -3,7 +3,9 @@ version: 1.0.0
 main: net.nebula.core.NebulaCore
 api-version: '1.21.11'
 author: Nebula Network
-description: Protected lobby, world selector and network utilities.
+description: Protected lobby, network HUD, ranks and NPCs.
+depend:
+  - Citizens
 commands:
   spawn:
     description: Return to the Nebula lobby.
@@ -21,6 +23,9 @@ commands:
   settings:
     description: Open personal network settings.
     usage: /settings
+  rank:
+    description: View your rank or change a player's network rank.
+    usage: /rank [player rank]
   rtp:
     description: Teleport to a random safe location in Survival.
     usage: /rtp
