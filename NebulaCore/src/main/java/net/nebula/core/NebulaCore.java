@@ -56,7 +56,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             for (int h = 1; h <= 5; h++) w.getBlockAt(cx+p[0], y+h, cz+p[1]).setType(Material.PURPLE_STAINED_GLASS, false);
             w.getBlockAt(cx+p[0], y+6, cz+p[1]).setType(Material.END_ROD, false);
         }
-        w.getBlockAt(cx, y+1, cz).setType(Material.BEACON, false);
+        w.getBlockAt(cx+3, y+1, cz).setType(Material.BEACON, false);
     }
 
     private Location loadLobby() {
@@ -75,6 +75,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     @EventHandler public void onJoin(PlayerJoinEvent e) {
         e.joinMessage(PREFIX + ChatColor.WHITE + e.getPlayer().getName() + ChatColor.GRAY + " joined the network.");
         e.getPlayer().teleport(lobby);
+        e.getPlayer().getInventory().setItem(4, item(Material.COMPASS, "Game Selector", List.of("Right-click to choose a game", "Use /menu anytime")));
         e.getPlayer().sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
     }
 
@@ -105,6 +106,12 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     }
 
     @EventHandler public void onInteract(PlayerInteractEvent e) {
+        if (inLobby(e.getPlayer().getLocation()) && e.getItem() != null && e.getItem().getType() == Material.COMPASS
+                && (e.getAction() == org.bukkit.event.block.Action.RIGHT_CLICK_AIR || e.getAction() == org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK)) {
+            e.setCancelled(true);
+            openMenu(e.getPlayer());
+            return;
+        }
         if (inLobby(e.getPlayer().getLocation()) && e.getClickedBlock() != null
                 && !e.getPlayer().hasPermission("nebulacore.admin")) e.setCancelled(true);
     }
