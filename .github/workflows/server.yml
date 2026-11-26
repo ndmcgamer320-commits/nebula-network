@@ -66,9 +66,23 @@ jobs:
         env:
           SECRET_KEY: ${{ secrets.PLAYIT_SECRET }}
         run: |
-          docker run -d --name playit --network host -e SECRET_KEY="$SECRET_KEY" ghcr.io/playit-cloud/playit-agent:2.0.2
-          sleep 10
-          docker logs playit
+          docker run -d --name playit --network host \
+            -e SECRET_KEY="$SECRET_KEY" \
+            ghcr.io/playit-cloud/playit-agent:1.0
+
+          echo "Waiting for the Playit agent to initialize..."
+          sleep 20
+
+          echo "=== Playit container status ==="
+          docker ps -a --filter name=playit
+
+          echo "=== Playit agent logs ==="
+          docker logs --tail 100 playit
+
+          if [ "$(docker inspect -f '{{.State.Running}}' playit 2>/dev/null)" != "true" ]; then
+            echo "::error::The Playit agent container stopped. See the logs above."
+            exit 1
+          fi
 
       - name: Run Minecraft server
         env:
