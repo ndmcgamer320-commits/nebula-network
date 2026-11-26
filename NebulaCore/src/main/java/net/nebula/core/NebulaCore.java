@@ -28,6 +28,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -113,7 +114,14 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     }
 
     @EventHandler public void onArenaExit(PlayerChangedWorldEvent e) {
-        World departed = e.getFrom();
+        scheduleArenaRegeneration(e.getFrom());
+    }
+
+    @EventHandler public void onArenaQuit(PlayerQuitEvent e) {
+        scheduleArenaRegeneration(e.getPlayer().getWorld());
+    }
+
+    private void scheduleArenaRegeneration(World departed) {
         String name = departed.getName();
         if (!name.equals("bedwars_1") && !name.equals("duel_arena")) return;
         Bukkit.getScheduler().runTaskLater(this, () -> {
