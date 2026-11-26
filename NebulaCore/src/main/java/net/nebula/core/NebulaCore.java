@@ -15,6 +15,7 @@ import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Entity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
@@ -53,8 +54,8 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         buildLobby();
         Bukkit.getPluginManager().registerEvents(this, this);
         Bukkit.getScheduler().runTaskLater(this, () -> {
-            ArenaBuilder.buildBedWars(Bukkit.getWorld("bedwars_1"));
-            ArenaBuilder.buildDuel(Bukkit.getWorld("duel_arena"));
+            regenerateArena(Bukkit.getWorld("bedwars_1"), "bedwars_1");
+            regenerateArena(Bukkit.getWorld("duel_arena"), "duel_arena");
             getLogger().info("Generated BedWars and Duel maps. Use /arenareset to regenerate them.");
         }, 20L);
         for (Player p : Bukkit.getOnlinePlayers()) updateTab(p);
@@ -117,8 +118,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         if (!name.equals("bedwars_1") && !name.equals("duel_arena")) return;
         Bukkit.getScheduler().runTaskLater(this, () -> {
             if (!departed.getPlayers().isEmpty()) return;
-            if (name.equals("bedwars_1")) ArenaBuilder.buildBedWars(departed);
-            else ArenaBuilder.buildDuel(departed);
+            regenerateArena(departed, name);
             getLogger().info("Automatically regenerated empty arena: " + name);
         }, 20L);
     }
@@ -249,14 +249,22 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         p.sendMessage(PREFIX + "Entered the Duel arena. The map is ready; duel matchmaking and kits are not enabled yet.");
     }
 
+    private void regenerateArena(World world, String arena) {
+        if (world == null) return;
+        for (Entity entity : world.getEntities()) {
+            if (!(entity instanceof Player)) entity.remove();
+        }
+        if (arena.equals("bedwars_1")) ArenaBuilder.buildBedWars(world);
+        else if (arena.equals("duel_arena")) ArenaBuilder.buildDuel(world);
+    }
+
     private boolean resetArenaWorld(String arena) {
         World world = Bukkit.getWorld(arena);
         if (world == null) return false;
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.getWorld().equals(world)) player.teleport(lobby);
         }
-        if (arena.equals("bedwars_1")) ArenaBuilder.buildBedWars(world);
-        else if (arena.equals("duel_arena")) ArenaBuilder.buildDuel(world);
+        regenerateArena(world, arena);
         return true;
     }
 
