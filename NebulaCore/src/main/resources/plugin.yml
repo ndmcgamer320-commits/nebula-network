@@ -18,6 +18,12 @@ commands:
   menu:
     description: Open the game selector.
     usage: /menu
+  settings:
+    description: Open personal network settings.
+    usage: /settings
+  rtp:
+    description: Teleport to a random safe location in Survival.
+    usage: /rtp
 permissions:
   nebulacore.admin:
     default: op
