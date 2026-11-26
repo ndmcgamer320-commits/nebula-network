@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.Random;
 import java.util.UUID;
+import java.io.File;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -39,54 +40,100 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     private final Map<UUID, Boolean> playersHidden = new HashMap<>();
     private final Random random = new Random();
     private NebulaGames games;
+    private NebulaHud hud;
+    private boolean importedLobby;
     private static final String PREFIX = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA " + ChatColor.LIGHT_PURPLE + "» " + ChatColor.GRAY;
     private static final String MENU_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA NETWORK";
     private static final String SETTINGS_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA SETTINGS";
 
     @Override
     public void onEnable() {
+        importedLobby = new File("lobby-imported.flag").isFile();
         lobby = loadLobby();
         for (String name : List.of("survival_1", "survival_2", "bedwars_1", "bedwars_2", "pillars_1", "pillars_2", "duel_arena")) {
             World world = Bukkit.getWorld(name);
             if (world == null) world = Bukkit.createWorld(new WorldCreator(name));
             if (world != null) world.setGameRule(org.bukkit.GameRule.DO_IMMEDIATE_RESPAWN, true);
         }
-        buildLobby();
+        if (!importedLobby) buildLobby();
+        applyLobbyBorder();
         Bukkit.getPluginManager().registerEvents(this, this);
         games = new NebulaGames(this, lobby);
         games.enable();
+        hud = new NebulaHud(this, lobby);
+        hud.enable();
         Bukkit.getScheduler().runTaskLater(this, () -> {
             regenerateArena(Bukkit.getWorld("bedwars_1"), "bedwars_1");
             regenerateArena(Bukkit.getWorld("duel_arena"), "duel_arena");
-            getLogger().info("Generated BedWars and layered CPvP maps. Use /arenareset to regenerate them.");
+            getLogger().info("Network worlds loaded. Lobby HUD and NPCs enabled.");
         }, 20L);
-        for (Player p : Bukkit.getOnlinePlayers()) updateTab(p);
-        getLogger().info("NebulaCore enabled with settings, RTP, TAB and regenerating arenas.");
+        for (Player p : Bukkit.getOnlinePlayers()) hud.refreshPlayer(p);
+        getLogger().info("NebulaCore enabled with the imported/custom lobby, ranks and scoreboard.");
     }
 
     private void buildLobby() {
         if (lobby == null || lobby.getWorld() == null) return;
-        World w = lobby.getWorld();
-        int y = lobby.getBlockY() - 1;
+        World world = lobby.getWorld();
         int cx = lobby.getBlockX(), cz = lobby.getBlockZ();
-        for (int x = -16; x <= 16; x++) for (int z = -16; z <= 16; z++) {
-            for (int h = 1; h <= 12; h++) w.getBlockAt(cx + x, y + h, cz + z).setType(Material.AIR, false);
-            Material floor = (Math.abs(x) == 16 || Math.abs(z) == 16) ? Material.PURPLE_CONCRETE : ((Math.abs(x) % 2 == 0 && Math.abs(z) % 2 == 0) ? Material.POLISHED_BLACKSTONE : Material.BLACK_CONCRETE);
-            w.getBlockAt(cx + x, y, cz + z).setType(floor, false);
+        int y = Math.max(world.getMinHeight() + 20, lobby.getBlockY() - 1);
+        for (int x = -44; x <= 44; x++) {
+            for (int z = -44; z <= 44; z++) {
+                if (x*x + z*z > 44*44) continue;
+                world.getBlockAt(cx+x, y, cz+z).setType(Math.sqrt(x*x+z*z)>41 ? Material.MOSS_BLOCK : Material.GRASS_BLOCK, false);
+                world.getBlockAt(cx+x, y-1, cz+z).setType(Material.DIRT, false);
+                world.getBlockAt(cx+x, y-2, cz+z).setType(Material.COARSE_DIRT, false);
+                world.getBlockAt(cx+x, y-3, cz+z).setType(Material.STONE, false);
+                world.getBlockAt(cx+x, y-4, cz+z).setType(Material.DEEPSLATE, false);
+                for (int h=1; h<=10; h++) world.getBlockAt(cx+x, y+h, cz+z).setType(Material.AIR, false);
+            }
         }
-        for (int[] p : new int[][]{{-14,-14},{-14,14},{14,-14},{14,14}}) {
-            for (int h = 1; h <= 5; h++) w.getBlockAt(cx+p[0], y+h, cz+p[1]).setType(Material.PURPLE_STAINED_GLASS, false);
-            w.getBlockAt(cx+p[0], y+6, cz+p[1]).setType(Material.END_ROD, false);
+        // A circular quartz-and-stone spawn plaza with four paths.
+        for (int x=-12; x<=12; x++) for (int z=-12; z<=12; z++) {
+            if (x*x+z*z<=12*12) world.getBlockAt(cx+x,y,cz+z).setType(((x+z)&1)==0?Material.QUARTZ_BLOCK:Material.POLISHED_DIORITE,false);
         }
-        w.getBlockAt(cx+3, y+1, cz).setType(Material.BEACON, false);
+        for (int i=-38;i<=38;i++) for (int lane=-2;lane<=2;lane++) {
+            if (Math.abs(i)<=12) continue;
+            world.getBlockAt(cx+i,y,cz+lane).setType(lane==0?Material.SMOOTH_STONE:Material.STONE_BRICKS,false);
+            world.getBlockAt(cx+lane,y,cz+i).setType(lane==0?Material.SMOOTH_STONE:Material.STONE_BRICKS,false);
+        }
+        for (int x=-13;x<=13;x++) for (int z=-13;z<=13;z++) {
+            int d=x*x+z*z;
+            if (d>=11*11&&d<=13*13) world.getBlockAt(cx+x,y,cz+z).setType(((x+z)&1)==0?Material.PURPLE_CONCRETE:Material.CYAN_CONCRETE,false);
+        }
+        // Bright center marker and decorative tree canopy ring.
+        world.getBlockAt(cx,y+1,cz).setType(Material.SEA_LANTERN,false);
+        world.getBlockAt(cx,y+2,cz).setType(Material.AMETHYST_BLOCK,false);
+        world.getBlockAt(cx,y+3,cz).setType(Material.END_ROD,false);
+        int[][] trees={{-30,-24},{-24,30},{30,24},{24,-30},{-36,0},{36,0},{0,-36},{0,36}};
+        for (int[] t:trees) {
+            int tx=cx+t[0], tz=cz+t[1];
+            for(int h=1;h<=5;h++) world.getBlockAt(tx,y+h,tz).setType(Material.OAK_LOG,false);
+            for(int dx=-3;dx<=3;dx++) for(int dz=-3;dz<=3;dz++) for(int h=3;h<=7;h++)
+                if(dx*dx+dz*dz+(h-5)*(h-5)<=13) world.getBlockAt(tx+dx,y+h,tz+dz).setType(Material.OAK_LEAVES,false);
+            world.getBlockAt(tx,y+8,tz).setType(Material.GLOWSTONE,false);
+        }
+        world.setSpawnLocation(cx,y+1,cz);
+        lobby=new Location(world,cx+0.5,y+1.0,cz+0.5);
+    }
+
+    private void applyLobbyBorder() {
+        if (lobby==null||lobby.getWorld()==null) return;
+        org.bukkit.WorldBorder border=lobby.getWorld().getWorldBorder();
+        border.setCenter(lobby.getX(),lobby.getZ());
+        border.setSize(110.0);
+        border.setDamageBuffer(0.0);
+        border.setDamageAmount(2.0);
+        border.setWarningDistance(5);
     }
 
     private Location loadLobby() {
-        if (!getConfig().contains("lobby.world")) return Bukkit.getWorlds().get(0).getSpawnLocation().add(0.5, 1, 0.5);
-        World world = Bukkit.getWorld(getConfig().getString("lobby.world", "world"));
-        if (world == null) return Bukkit.getWorlds().get(0).getSpawnLocation().add(0.5, 1, 0.5);
-        return new Location(world, getConfig().getDouble("lobby.x"), getConfig().getDouble("lobby.y"),
-                getConfig().getDouble("lobby.z"), (float)getConfig().getDouble("lobby.yaw"), (float)getConfig().getDouble("lobby.pitch"));
+        World world=Bukkit.getWorld("world");
+        if(importedLobby&&world!=null) return world.getSpawnLocation().clone().add(0.5,1.0,0.5);
+        if(!getConfig().contains("lobby.world")) return Bukkit.getWorlds().get(0).getSpawnLocation().add(0.5,1,0.5);
+        world=Bukkit.getWorld(getConfig().getString("lobby.world","world"));
+        if(world==null) return Bukkit.getWorlds().get(0).getSpawnLocation().add(0.5,1,0.5);
+        return new Location(world,getConfig().getDouble("lobby.x"),getConfig().getDouble("lobby.y"),
+                getConfig().getDouble("lobby.z"),(float)getConfig().getDouble("lobby.yaw"),(float)getConfig().getDouble("lobby.pitch"));
     }
 
     private boolean inLobby(Location loc) {
@@ -110,8 +157,8 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         p.getInventory().setItem(4, item(Material.COMPASS, "Game Selector", List.of("Right-click to choose a game", "Use /menu anytime")));
         p.getInventory().setItem(8, item(Material.CLOCK, "Settings", List.of("Right-click to customize your lobby")));
         p.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
-        updateTab(p);
-        for (Player online : Bukkit.getOnlinePlayers()) updateTab(online);
+        hud.refreshPlayer(p);
+        for (Player online : Bukkit.getOnlinePlayers()) hud.refreshPlayer(online);
     }
 
     @EventHandler public void onArenaExit(PlayerChangedWorldEvent e) {
@@ -298,11 +345,16 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             getConfig().set("lobby.x", lobby.getX()); getConfig().set("lobby.y", lobby.getY()); getConfig().set("lobby.z", lobby.getZ());
             getConfig().set("lobby.yaw", lobby.getYaw()); getConfig().set("lobby.pitch", lobby.getPitch());
             saveConfig();
-            p.sendMessage(PREFIX + "Lobby spawn saved. The 100-block radius is protected.");
+            applyLobbyBorder();
+            if (hud != null) hud.updateLobby(lobby);
+            p.sendMessage(PREFIX + "Lobby spawn saved. The lobby border and effects were updated.");
             return true;
         }
         if (command.getName().equalsIgnoreCase("spawn")) {
-            if (sender instanceof Player p) p.teleport(lobby);
+            if (sender instanceof Player p) {
+                p.teleport(lobby);
+                if (hud != null) hud.refreshPlayer(p);
+            }
             return true;
         }
         if (command.getName().equalsIgnoreCase("rtp")) {
@@ -331,6 +383,10 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 if (target.equals("all") || target.equals("duel")) success &= resetArenaWorld("duel_arena");
                 sender.sendMessage(PREFIX + (success ? "Arena regeneration complete: " + target : "Could not regenerate one of the arenas. Check the server log."));
             });
+            return true;
+        }
+        if (command.getName().equalsIgnoreCase("rank")) {
+            hud.handleRankCommand(sender, args);
             return true;
         }
         if (command.getName().equalsIgnoreCase("settings")) {
