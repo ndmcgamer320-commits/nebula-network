@@ -1,0 +1,120 @@
+name: Run Nebula Network
+
+on:
+  workflow_dispatch:
+    inputs:
+      accept_minecraft_eula:
+        description: "I have read and agree to the Minecraft EULA"
+        required: true
+        type: boolean
+        default: false
+      runtime_hours:
+        description: "Server runtime (maximum 5 hours)"
+        required: true
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+        default: "5"
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - name: Check required settings
+        env:
+          ACCEPT_EULA: ${{ inputs.accept_minecraft_eula }}
+          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
+        run: |
+          if [ "$ACCEPT_EULA" != "true" ]; then
+            echo "::error::You must read and accept the Minecraft EULA before starting."
+            exit 1
+          fi
+          if [ -z "$PLAYIT_SECRET" ]; then
+            echo "::error::Add PLAYIT_SECRET in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Download latest Paper 1.21.11
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          BUILD=$(curl -fsSL https://api.papermc.io/v2/projects/paper/versions/1.21.11 | jq -r '.builds[-1]')
+          if [ -z "$BUILD" ] || [ "$BUILD" = "null" ]; then
+            echo "::error::Could not find a Paper 1.21.11 build."
+            exit 1
+          fi
+          curl -fL "https://api.papermc.io/v2/projects/paper/versions/1.21.11/builds/$BUILD/downloads/paper-1.21.11-$BUILD.jar" -o paper.jar
+          echo "Using Paper 1.21.11 build $BUILD"
+
+      - name: Build NebulaCore plugin
+        run: |
+          mvn -B -f NebulaCore/pom.xml package
+          mkdir -p plugins
+          cp NebulaCore/target/NebulaCore-1.0.0.jar plugins/
+
+      - name: Accept EULA and configure server
+        run: |
+          echo "eula=true" > eula.txt
+          cp server.properties server.properties.runtime
+          mv server.properties.runtime server.properties
+
+      - name: Start Playit tunnel
+        env:
+          SECRET_KEY: ${{ secrets.PLAYIT_SECRET }}
+        run: |
+          curl -fL https://github.com/playit-cloud/playit-agent/releases/download/v2.0.2/playit-cli-linux-amd64 -o playit
+          chmod +x playit
+          nohup ./playit --secret "$SECRET_KEY" > playit.log 2>&1 &
+          sleep 8
+          cat playit.log || true
+
+      - name: Start Minecraft server
+        env:
+          RUNTIME_HOURS: ${{ inputs.runtime_hours }}
+        run: |
+          SECONDS_TO_RUN=$((RUNTIME_HOURS * 3600))
+          echo "Nebula Network will run for $RUNTIME_HOURS hour(s)."
+          java -Xms2G -Xmx5G -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -jar paper.jar --nogui &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > server.pid
+          END=$(( $(date +%s) + SECONDS_TO_RUN ))
+          while kill -0 "$SERVER_PID" 2>/dev/null && [ "$(date +%s)" -lt "$END" ]; do
+            sleep 15
+          done
+          if kill -0 "$SERVER_PID" 2>/dev/null; then
+            echo "Five-hour session finished. Stopping server gracefully."
+            kill -TERM "$SERVER_PID"
+            for i in $(seq 1 30); do
+              kill -0 "$SERVER_PID" 2>/dev/null || break
+              sleep 2
+            done
+            kill -KILL "$SERVER_PID" 2>/dev/null || true
+          fi
+
+      - name: Upload server logs and world backup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebula-network-session
+          path: |
+            logs/
+            playit.log
+            plugins/NebulaCore/
+            world*/level.dat
+          if-no-files-found: ignore
+          retention-days: 3
