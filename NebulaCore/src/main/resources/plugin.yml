@@ -25,11 +25,11 @@ commands:
     description: Teleport to a random safe location in Survival.
     usage: /rtp
   bedwars:
-    description: Enter the Nebula BedWars map.
-    usage: /bedwars
+    description: Open BedWars modes or leave the queue.
+    usage: /bedwars [leave]
   duel:
-    description: Enter the Nebula Duel map.
-    usage: /duel
+    description: Open CPvP duels, queue, practice the bot or edit your kit.
+    usage: /duel [queue|bot|edit|leave]
   arenareset:
     description: Regenerate the BedWars and Duel maps.
     usage: /arenareset [bedwars|duel|all]
