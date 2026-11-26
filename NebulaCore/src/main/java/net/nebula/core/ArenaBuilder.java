@@ -35,10 +35,10 @@ public final class ArenaBuilder {
         // Team spawn pads and small themed structures.
         pad(world, -24, -6, Material.RED_CONCRETE);
         pad(world, 24, 6, Material.BLUE_CONCRETE);
-        tower(world, -32, -7, Material.RED_STAINED_GLASS);
-        tower(world, -32, 7, Material.RED_STAINED_GLASS);
-        tower(world, 32, -7, Material.BLUE_STAINED_GLASS);
-        tower(world, 32, 7, Material.BLUE_STAINED_GLASS);
+        tower(world, -30, -4, Material.RED_STAINED_GLASS);
+        tower(world, -30, 4, Material.RED_STAINED_GLASS);
+        tower(world, 30, -4, Material.BLUE_STAINED_GLASS);
+        tower(world, 30, 4, Material.BLUE_STAINED_GLASS);
 
         // Mid-island ring and generator centerpiece.
         disk(world, 0, 0, FLOOR_Y, 6, Material.CYAN_CONCRETE);
