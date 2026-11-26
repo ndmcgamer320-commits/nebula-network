@@ -364,11 +364,7 @@ public final class NebulaHud implements Listener {
         if (action == null) return;
         Player player = event.getClicker();
         switch (action) {
-            case "SURVIVAL" -> {
-                World world = Bukkit.getWorld("survival_1");
-                if (world != null) player.teleport(world.getSpawnLocation());
-                else player.sendMessage(PREFIX + "Survival is not loaded.");
-            }
+            case "SURVIVAL" -> plugin.teleportToSurvival(player, "survival_1");
             case "LEADERBOARD" -> openLeaderboard(player);
             case "SETTINGS" -> player.performCommand("settings");
             case "MENU" -> player.performCommand("menu");
