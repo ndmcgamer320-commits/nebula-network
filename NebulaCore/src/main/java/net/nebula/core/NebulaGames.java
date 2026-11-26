@@ -603,8 +603,8 @@ public final class NebulaGames implements Listener {
                     event.setCancelled(true);
                     return;
                 }
-                boolean player'sRed = match.red.contains(id);
-                if ((redBed && player'sRed) || (blueBed && !player'sRed)) {
+                boolean playersRed = match.red.contains(id);
+                if ((redBed && playersRed) || (blueBed && !playersRed)) {
                     event.setCancelled(true);
                     player.sendMessage(PREFIX + "You cannot break your own team's bed.");
                     return;
