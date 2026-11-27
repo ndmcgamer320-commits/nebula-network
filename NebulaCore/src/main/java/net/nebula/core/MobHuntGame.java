@@ -205,6 +205,318 @@ public final class MobHuntGame implements Listener {
         }
     }
 
+    private UUID partyLeaderOf(UUID member) {
+        for (Map.Entry<UUID, LinkedHashSet<UUID>> entry : parties.entrySet()) {
+            if (entry.getValue().contains(member)) return entry.getKey();
+        }
+        return null;
+    }
+
+    private void handlePartyCommand(Player player, String[] args) {
+        UUID id = player.getUniqueId();
+        String sub = args.length > 1 ? args[1].toLowerCase(java.util.Locale.ROOT) : "info";
+        switch (sub) {
+            case "invite" -> {
+                if (args.length < 3) { player.sendMessage(PREFIX + "Usage: /mobhunt party invite <player>"); return; }
+                UUID leader = partyLeaderOf(id);
+                if (leader != null && !leader.equals(id)) { player.sendMessage(PREFIX + "Only your party leader can invite."); return; }
+                Player target = Bukkit.getPlayerExact(args[2]);
+                if (target == null || target.equals(player)) { player.sendMessage(PREFIX + ChatColor.RED + "That player is not online."); return; }
+                LinkedHashSet<UUID> group = parties.computeIfAbsent(id, k -> new LinkedHashSet<>(Set.of(id)));
+                if (group.size() >= MAX_PLAYERS) { player.sendMessage(PREFIX + ChatColor.RED + "Party is full (8 players)."); return; }
+                partyInvites.put(target.getUniqueId(), id);
+                target.sendMessage(PREFIX + ChatColor.AQUA + player.getName() + " invited you to a Mob Hunt party. Use /mobhunt party accept.");
+                player.sendMessage(PREFIX + "Party invitation sent to " + target.getName() + ".");
+                Bukkit.getScheduler().runTaskLater(plugin, () -> partyInvites.remove(target.getUniqueId(), id), 1200L);
+            }
+            case "accept" -> {
+                UUID host = partyInvites.remove(id);
+                if (host == null || Bukkit.getPlayer(host) == null) { player.sendMessage(PREFIX + ChatColor.RED + "You have no valid party invitation."); return; }
+                LinkedHashSet<UUID> group = parties.computeIfAbsent(host, k -> new LinkedHashSet<>(Set.of(host)));
+                if (group.size() >= MAX_PLAYERS) { player.sendMessage(PREFIX + ChatColor.RED + "That party is full."); return; }
+                UUID existing = partyLeaderOf(id);
+                if (existing != null) parties.get(existing).remove(id);
+                group.add(id);
+                player.sendMessage(PREFIX + ChatColor.GREEN + "You joined " + Bukkit.getPlayer(host).getName() + "'s party.");
+                Player leaderPlayer = Bukkit.getPlayer(host);
+                if (leaderPlayer != null) leaderPlayer.sendMessage(PREFIX + player.getName() + " joined your party.");
+            }
+            case "leave" -> {
+                UUID leader = partyLeaderOf(id);
+                if (leader == null) { player.sendMessage(PREFIX + "You are not in a party."); return; }
+                LinkedHashSet<UUID> group = parties.get(leader);
+                group.remove(id);
+                if (id.equals(leader)) {
+                    for (UUID member : new ArrayList<>(group)) {
+                        Player online = Bukkit.getPlayer(member);
+                        if (online != null) online.sendMessage(PREFIX + ChatColor.YELLOW + "The party was disbanded.");
+                    }
+                    parties.remove(leader);
+                } else if (group.size() <= 1) parties.remove(leader);
+                player.sendMessage(PREFIX + "You left the party.");
+            }
+            default -> {
+                UUID leader = partyLeaderOf(id);
+                if (leader == null) player.sendMessage(PREFIX + "No party. Use /mobhunt party invite <player>.");
+                else player.sendMessage(PREFIX + "Party leader: " + nameOf(leader) + " • Members: "
+                        + parties.getOrDefault(leader, new LinkedHashSet<>()).stream().map(this::nameOf).collect(Collectors.joining(", ")));
+            }
+        }
+    }
+
+    private void handlePrivateCommand(Player player, String[] args) {
+        UUID id = player.getUniqueId();
+        String sub = args.length > 1 ? args[1].toLowerCase(java.util.Locale.ROOT) : "help";
+        switch (sub) {
+            case "create" -> {
+                if (match != null) { player.sendMessage(PREFIX + ChatColor.RED + "A match is already active."); return; }
+                if (privateHost != null && !privateHost.equals(id)) { player.sendMessage(PREFIX + ChatColor.RED + "Another private lobby is already open."); return; }
+                privateHost = id;
+                privateRoster.clear();
+                privateRoster.add(id);
+                player.sendMessage(PREFIX + ChatColor.GREEN + "Private Mob Hunt lobby created. Invite players, then use /mobhunt private start.");
+            }
+            case "invite" -> {
+                if (!id.equals(privateHost)) { player.sendMessage(PREFIX + ChatColor.RED + "Create a private lobby first; only its host can invite."); return; }
+                if (args.length < 3) { player.sendMessage(PREFIX + "Usage: /mobhunt private invite <player>"); return; }
+                Player target = Bukkit.getPlayerExact(args[2]);
+                if (target == null || target.equals(player)) { player.sendMessage(PREFIX + ChatColor.RED + "That player is not online."); return; }
+                privateInvites.put(target.getUniqueId(), id);
+                target.sendMessage(PREFIX + ChatColor.AQUA + player.getName() + " invited you to a private Mob Hunt. Use /mobhunt private accept.");
+                player.sendMessage(PREFIX + "Private invitation sent.");
+                Bukkit.getScheduler().runTaskLater(plugin, () -> privateInvites.remove(target.getUniqueId(), id), 1200L);
+            }
+            case "accept" -> {
+                UUID host = privateInvites.remove(id);
+                if (host == null || !host.equals(privateHost) || Bukkit.getPlayer(host) == null) {
+                    player.sendMessage(PREFIX + ChatColor.RED + "You have no valid private-match invitation."); return;
+                }
+                if (privateRoster.size() >= MAX_PLAYERS) { player.sendMessage(PREFIX + ChatColor.RED + "Private lobby is full."); return; }
+                privateRoster.add(id);
+                player.sendMessage(PREFIX + ChatColor.GREEN + "You joined the private Mob Hunt lobby.");
+                Bukkit.getPlayer(host).sendMessage(PREFIX + player.getName() + " accepted your invitation.");
+            }
+            case "start" -> startPrivateMatch(player);
+            case "cancel", "close" -> {
+                if (!id.equals(privateHost)) { player.sendMessage(PREFIX + ChatColor.RED + "Only the host can close this lobby."); return; }
+                for (UUID member : privateRoster) {
+                    Player online = Bukkit.getPlayer(member);
+                    if (online != null && !online.equals(player)) online.sendMessage(PREFIX + ChatColor.YELLOW + "The private Mob Hunt lobby was closed.");
+                }
+                privateRoster.clear(); privateHost = null;
+                player.sendMessage(PREFIX + "Private lobby closed.");
+            }
+            default -> player.sendMessage(PREFIX + "Private: /mobhunt private create|invite <player>|accept|start|cancel");
+        }
+    }
+
+    private int configuredRoundSeconds() {
+        return Math.max(60, Math.min(900, plugin.getConfig().getInt("mobhunt.round-seconds", ROUND_SECONDS)));
+    }
+
+    private int configuredHunterLives() {
+        return Math.max(1, Math.min(10, plugin.getConfig().getInt("mobhunt.hunter-lives", HUNTER_LIVES)));
+    }
+
+    private int configuredMobPickSeconds() {
+        return Math.max(5, Math.min(60, plugin.getConfig().getInt("mobhunt.mob-pick-seconds", MOB_PICK_SECONDS)));
+    }
+
+    private boolean isMobEnabled(String mob) {
+        return !plugin.getConfig().getStringList("mobhunt.disabled-mobs").contains(mob);
+    }
+
+    private long configuredAbilityCooldown(String mob) {
+        int seconds = plugin.getConfig().getInt("mobhunt.ability-cooldowns." + mob, (int) (abilityCooldown(mob) / 1000L));
+        return Math.max(3, Math.min(120, seconds)) * 1000L;
+    }
+
+    private void showStats(Player viewer, String targetName) {
+        org.bukkit.OfflinePlayer target = Bukkit.getOfflinePlayer(targetName);
+        String path = "mobhunt.stats." + target.getUniqueId();
+        viewer.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Mob Hunt stats for " + targetName);
+        viewer.sendMessage(ChatColor.GRAY + "Matches: " + ChatColor.WHITE + plugin.getConfig().getInt(path + ".matches", 0)
+                + ChatColor.GRAY + " • Wins: " + ChatColor.GREEN + plugin.getConfig().getInt(path + ".wins", 0));
+        viewer.sendMessage(ChatColor.GRAY + "Kills: " + ChatColor.WHITE + plugin.getConfig().getInt(path + ".kills", 0)
+                + ChatColor.GRAY + " • Survival: " + ChatColor.AQUA + plugin.getConfig().getInt(path + ".survival-seconds", 0) + "s");
+        viewer.sendMessage(ChatColor.GRAY + "Best points: " + ChatColor.GOLD + plugin.getConfig().getInt(path + ".best-points", 0)
+                + ChatColor.GRAY + " • Favorite mob: " + ChatColor.LIGHT_PURPLE + plugin.getConfig().getString(path + ".favorite-mob", "N/A"));
+    }
+
+    private void showLeaderboard(Player viewer) {
+        ConfigurationSection section = plugin.getConfig().getConfigurationSection("mobhunt.stats");
+        if (section == null || section.getKeys(false).isEmpty()) { viewer.sendMessage(PREFIX + "No Mob Hunt leaderboard records yet."); return; }
+        List<String> ids = new ArrayList<>(section.getKeys(false));
+        ids.sort(Comparator.comparingInt((String id) -> plugin.getConfig().getInt("mobhunt.stats." + id + ".wins", 0)).reversed()
+                .thenComparing(Comparator.comparingInt((String id) -> plugin.getConfig().getInt("mobhunt.stats." + id + ".kills", 0)).reversed()));
+        viewer.sendMessage(PREFIX + ChatColor.GOLD + "" + ChatColor.BOLD + "MOB HUNT LEADERBOARD");
+        for (int i = 0; i < Math.min(5, ids.size()); i++) {
+            UUID id;
+            try { id = UUID.fromString(ids.get(i)); } catch (IllegalArgumentException ex) { continue; }
+            String name = Bukkit.getOfflinePlayer(id).getName();
+            viewer.sendMessage(ChatColor.LIGHT_PURPLE + "#" + (i + 1) + " " + ChatColor.WHITE + (name == null ? "Unknown" : name)
+                    + ChatColor.GRAY + " • Wins: " + ChatColor.GREEN + plugin.getConfig().getInt("mobhunt.stats." + id + ".wins", 0)
+                    + ChatColor.GRAY + " • Kills: " + plugin.getConfig().getInt("mobhunt.stats." + id + ".kills", 0));
+        }
+    }
+
+    private void persistRecovery(UUID id, PlayerSnapshot snapshot) {
+        String path = "players." + id;
+        recovery.set(path + ".contents", serializeItems(snapshot.contents));
+        recovery.set(path + ".armor", serializeItems(snapshot.armor));
+        recovery.set(path + ".offhand", snapshot.offhand == null ? null : snapshot.offhand.serialize());
+        recovery.set(path + ".gamemode", snapshot.gameMode.name());
+        recovery.set(path + ".food", snapshot.food);
+        recovery.set(path + ".saturation", snapshot.saturation);
+        recovery.set(path + ".health", snapshot.health);
+        recovery.set(path + ".allow-flight", snapshot.allowFlight);
+        recovery.set(path + ".flying", snapshot.flying);
+        recovery.set(path + ".walk-speed", snapshot.walkSpeed);
+        recovery.set(path + ".fly-speed", snapshot.flySpeed);
+        recovery.set(path + ".level", snapshot.level);
+        recovery.set(path + ".exp", snapshot.exp);
+        List<Map<String, Object>> effects = new ArrayList<>();
+        for (PotionEffect effect : snapshot.effects) effects.add(effect.serialize());
+        recovery.set(path + ".effects", effects);
+        saveRecovery();
+    }
+
+    private List<Object> serializeItems(ItemStack[] items) {
+        List<Object> serialized = new ArrayList<>();
+        for (ItemStack item : items) serialized.add(item == null ? null : item.serialize());
+        return serialized;
+    }
+
+    private ItemStack[] deserializeItems(List<?> input, int size) {
+        ItemStack[] items = new ItemStack[size];
+        if (input == null) return items;
+        for (int i = 0; i < Math.min(size, input.size()); i++) {
+            Object value = input.get(i);
+            if (value instanceof ItemStack item) items[i] = item.clone();
+            else if (value instanceof Map<?, ?> map) {
+                Map<String, Object> typed = new LinkedHashMap<>();
+                map.forEach((k, v) -> typed.put(String.valueOf(k), v));
+                try { items[i] = ItemStack.deserialize(typed); } catch (IllegalArgumentException ignored) { }
+            }
+        }
+        return items;
+    }
+
+    private void saveRecovery() {
+        try { recovery.save(recoveryFile); }
+        catch (IOException ex) { plugin.getLogger().severe("Could not save Mob Hunt recovery data: " + ex.getMessage()); }
+    }
+
+    private void clearRecovery(UUID id) {
+        recovery.set("players." + id, null);
+        saveRecovery();
+    }
+
+    private boolean restorePendingRecovery(Player player) {
+        ConfigurationSection section = recovery.getConfigurationSection("players." + player.getUniqueId());
+        if (section == null) return false;
+        PlayerInventory inv = player.getInventory();
+        inv.clear();
+        inv.setContents(deserializeItems(section.getMapList("contents"), inv.getSize()));
+        inv.setArmorContents(deserializeItems(section.getMapList("armor"), 4));
+        Object offhand = section.get("offhand");
+        if (offhand instanceof Map<?, ?> map) {
+            Map<String, Object> typed = new LinkedHashMap<>();
+            map.forEach((k, v) -> typed.put(String.valueOf(k), v));
+            try { inv.setItemInOffHand(ItemStack.deserialize(typed)); } catch (IllegalArgumentException ignored) { }
+        }
+        try { player.setGameMode(GameMode.valueOf(section.getString("gamemode", "ADVENTURE"))); }
+        catch (IllegalArgumentException ignored) { player.setGameMode(GameMode.ADVENTURE); }
+        player.setFoodLevel(section.getInt("food", 20));
+        player.setSaturation((float) section.getDouble("saturation", 20.0));
+        player.setHealth(Math.max(1.0, Math.min(section.getDouble("health", 20.0), player.getAttribute(Attribute.MAX_HEALTH).getValue())));
+        player.setLevel(section.getInt("level", 0));
+        player.setExp((float) section.getDouble("exp", 0.0));
+        for (PotionEffect active : player.getActivePotionEffects()) player.removePotionEffect(active.getType());
+        for (Map<String, Object> effect : section.getMapList("effects")) {
+            try { player.addPotionEffect(PotionEffect.deserialize(effect)); } catch (IllegalArgumentException ignored) { }
+        }
+        player.setWalkSpeed((float) section.getDouble("walk-speed", 0.2));
+        player.setFlySpeed((float) section.getDouble("fly-speed", 0.1));
+        boolean allowFlight = section.getBoolean("allow-flight", false);
+        player.setAllowFlight(allowFlight);
+        player.setFlying(allowFlight && section.getBoolean("flying", false));
+        player.teleport(lobby);
+        player.updateInventory();
+        clearRecovery(player.getUniqueId());
+        player.sendMessage(PREFIX + ChatColor.GREEN + "Your previous Mob Hunt session was recovered safely.");
+        return true;
+    }
+
+    private void logMatch(String type, Match active, String detail) {
+        plugin.getLogger().info("[MobHunt][" + type + "] " + detail + " | round=" + active.round
+                + " | map=" + active.mapName + " | players=" + active.players);
+    }
+
+    private void saveMatchHistory(Match active, String winners) {
+        List<Map<String, Object>> records = new ArrayList<>(history.getMapList("matches"));
+        Map<String, Object> record = new LinkedHashMap<>();
+        record.put("ended-at", System.currentTimeMillis());
+        record.put("map", active.mapName);
+        record.put("private", active.privateMatch);
+        record.put("rounds", active.round);
+        record.put("players", active.players.stream().map(UUID::toString).toList());
+        record.put("winners", winners);
+        record.put("scores", active.players.stream().collect(Collectors.toMap(UUID::toString, id -> active.scores.getOrDefault(id, 0))));
+        records.add(record);
+        while (records.size() > 50) records.remove(0);
+        history.set("matches", records);
+        try { history.save(historyFile); }
+        catch (IOException ex) { plugin.getLogger().severe("Could not save Mob Hunt history: " + ex.getMessage()); }
+    }
+
+    public boolean handleReconnect(Player player) {
+        UUID id = player.getUniqueId();
+        Match active = match;
+        if (active == null) return restorePendingRecovery(player);
+        if (!active.players.contains(id) || active.forfeited.contains(id)) return restorePendingRecovery(player);
+        BukkitTask task = active.disconnectTasks.remove(id);
+        if (task != null) task.cancel();
+        active.disconnected.remove(id);
+        resetForRound(player);
+        player.teleport(new Location(world, 0.5, arenaBaseY + 1.0, 0.5));
+        if (id.equals(active.hunter)) {
+            player.setWalkSpeed(active.hunterLocked ? 0.0f : 0.2f);
+            if (active.hunterLocked) player.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, Math.max(1, active.secondsLeft) * 20, 0, false, false, true));
+            giveHunterBaseKit(player);
+            Set<Material> tools = active.selectedTools.getOrDefault(id, Collections.emptySet());
+            for (Material tool : tools) player.getInventory().addItem(new ItemStack(tool));
+        } else if (active.aliveHiders.contains(id)) {
+            player.teleport(randomVillageSpawn());
+            giveHiderKit(player);
+            String mob = active.mobForms.get(id);
+            if (mob != null) { applyDisguise(player, mob); applyMobAbility(player, mob); }
+            else { active.mobPickPending.add(id); openMobPicker(player, ""); }
+        } else {
+            player.setGameMode(GameMode.SPECTATOR);
+        }
+        player.sendMessage(PREFIX + ChatColor.GREEN + "Reconnected to your Mob Hunt match.");
+        logMatch("RECONNECT", active, "player=" + player.getName());
+        return true;
+    }
+
+    public void shutdown() {
+        Match active = match;
+        if (active == null) return;
+        active.cancelRoundTasks();
+        for (UUID id : active.players) {
+            Player player = Bukkit.getPlayer(id);
+            PlayerSnapshot snapshot = active.snapshots.get(id);
+            if (player != null && player.isOnline() && snapshot != null) {
+                DisguiseAPI.undisguiseToAll(player);
+                snapshot.restoreAtLobby(player, lobby);
+                clearRecovery(id);
+            }
+        }
+        logMatch("SHUTDOWN", active, "restored online players; offline recovery snapshots retained");
+        match = null;
+    }
+
     private void sendStatus(Player player) {
         if (match != null) {
             player.sendMessage(PREFIX + ChatColor.AQUA + "Mob Hunt round " + match.round
