@@ -996,6 +996,33 @@ public final class MobHuntGame implements Listener {
     }
 
     @EventHandler
+    public void onSpiderWallClimb(PlayerMoveEvent event) {
+        Match active = match;
+        Player player = event.getPlayer();
+        if (active == null || active.roundEnded || !active.aliveHiders.contains(player.getUniqueId())) return;
+        String mob = active.mobForms.get(player.getUniqueId());
+        if (!"SPIDER".equals(mob) && !"CAVE_SPIDER".equals(mob)) return;
+        Block feet = player.getLocation().getBlock();
+        boolean touchingWall = false;
+        for (BlockFace face : List.of(BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST)) {
+            if (feet.getRelative(face).getType().isSolid()
+                    || feet.getRelative(face).getRelative(BlockFace.UP).getType().isSolid()) {
+                touchingWall = true;
+                break;
+            }
+        }
+        if (!touchingWall) return;
+        org.bukkit.util.Vector velocity = player.getVelocity();
+        if (velocity.getY() < 0.22) velocity.setY(0.22);
+        player.setVelocity(velocity);
+        if (random.nextInt(4) == 0) {
+            player.getWorld().spawnParticle(org.bukkit.Particle.BLOCK,
+                    player.getLocation().add(0, 0.7, 0), 3, 0.2, 0.25, 0.2,
+                    feet.getRelative(BlockFace.DOWN).getBlockData());
+        }
+    }
+
+    @EventHandler
     public void onHunterFreeze(PlayerMoveEvent event) {
         Match active = match;
         if (active == null || active.ending || !active.hunterLocked
