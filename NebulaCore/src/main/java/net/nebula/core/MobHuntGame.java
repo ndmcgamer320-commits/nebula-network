@@ -1313,9 +1313,10 @@ public final class MobHuntGame implements Listener {
             Player player = Bukkit.getPlayer(id);
             if (player != null && player.isOnline()) {
                 DisguiseAPI.undisguiseToAll(player);
-                player.setAllowFlight(false);
-                player.setFlying(false);
                 player.closeInventory();
+                player.setGameMode(GameMode.SPECTATOR);
+                player.setAllowFlight(true);
+                player.setFlying(true);
                 player.sendMessage(PREFIX + ChatColor.AQUA + "Scores: " + scoreLine(active));
             }
         }
