@@ -562,40 +562,28 @@ public final class MobHuntGame implements Listener {
         }
     }
 
+    /**
+     * Only grant traits that match the actual Minecraft mob. Mobs without a
+     * distinct player-reproducible vanilla trait receive no invented power.
+     */
     private void applyMobAbility(Player player, String mob) {
+        player.setAllowFlight(false);
+        player.setFlying(false);
+        player.setFlySpeed(0.1f);
         switch (mob) {
-            case "GHAST", "BAT", "BEE", "PHANTOM" -> {
+            case "BEE", "BAT", "GHAST", "PHANTOM", "ALLAY", "PARROT" -> {
                 player.setAllowFlight(true);
                 player.setFlying(true);
-                player.setFlySpeed(0.08f);
+                player.setFlySpeed(mob.equals("GHAST") ? 0.05f : 0.07f);
             }
-            case "RABBIT", "FROG", "SLIME", "MAGMA_CUBE" ->
+            case "RABBIT", "FROG", "SLIME", "MAGMA_CUBE", "GOAT" ->
                     player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, ROUND_SECONDS * 20, 1, false, false, true));
-            case "WOLF", "FOX", "CAT" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 1, false, false, true));
-            case "TURTLE", "AXOLOTL" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, ROUND_SECONDS * 20, 0, false, false, true));
-            case "WARDEN" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, ROUND_SECONDS * 20, 0, false, false, true));
-            case "WITHER_SKELETON" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, ROUND_SECONDS * 20, 0, false, false, true));
-            case "STRAY" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, ROUND_SECONDS * 20, 0, false, false, true));
-            case "CREEPER" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, ROUND_SECONDS * 20, 0, false, false, true));
-            case "ENDERMAN" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 1, false, false, true));
-            case "IRON_GOLEM" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, ROUND_SECONDS * 20, 0, false, false, true));
-            case "VILLAGER", "ALLAY" ->
+            case "HORSE", "DONKEY", "MULE", "LLAMA", "CAMEL" ->
                     player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 0, false, false, true));
-            case "HORSE", "DONKEY", "MULE", "LLAMA", "STRIDER" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 1, false, false, true));
-            case "BLAZE" -> {
-                player.setAllowFlight(true);
-                player.setFlying(true);
-                player.setFlySpeed(0.06f);
-            }
+            case "TURTLE", "AXOLOTL", "DOLPHIN" ->
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, ROUND_SECONDS * 20, 0, false, false, true));
+            case "WITHER_SKELETON", "BLAZE", "MAGMA_CUBE", "STRIDER" ->
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, ROUND_SECONDS * 20, 0, false, false, true));
             default -> { }
         }
     }
@@ -962,11 +950,6 @@ public final class MobHuntGame implements Listener {
                     if (push.lengthSquared() > 0.001) hunter.setVelocity(push.normalize().multiply(0.65).setY(0.35));
                 }
             }
-            case "VILLAGER", "ALLAY" -> {
-                player.getWorld().spawnParticle(org.bukkit.Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 24, 0.6, 0.7, 0.6, 0.05);
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2));
-                player.setVelocity(player.getLocation().getDirection().multiply(0.85).setY(0.25));
-            }
             case "BLAZE" -> {
                 player.getWorld().spawnParticle(org.bukkit.Particle.FLAME, player.getLocation().add(0, 1, 0), 30, 0.5, 0.5, 0.5, 0.02);
                 player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_BLAZE_SHOOT, 1f, 1f);
@@ -981,9 +964,9 @@ public final class MobHuntGame implements Listener {
                 player.setVelocity(player.getLocation().getDirection().multiply(1.25).setY(0.3));
             }
             default -> {
-                player.getWorld().spawnParticle(org.bukkit.Particle.CRIT, player.getLocation().add(0, 1, 0), 18, 0.45, 0.5, 0.45, 0.1);
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player);
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 1));
+                player.sendMessage(PREFIX + ChatColor.GRAY + "This mob has no special active ability in vanilla Minecraft.");
+                active.abilityReadyAt.put(id, System.currentTimeMillis());
+                return;
             }
         }
         if (!mob.equals("WARDEN")) {
@@ -1294,12 +1277,35 @@ public final class MobHuntGame implements Listener {
                     && (active.aliveHiders.contains(attacker.getUniqueId()) || attacker.getUniqueId().equals(active.hunter))
                     && (active.aliveHiders.contains(victim.getUniqueId()) || victim.getUniqueId().equals(active.hunter))
                     && (attacker.getUniqueId().equals(active.hunter) != victim.getUniqueId().equals(active.hunter))) {
-                if (attacker.getUniqueId().equals(victim.getUniqueId())) event.setCancelled(true);
+                if (attacker.getUniqueId().equals(victim.getUniqueId())) {
+                    event.setCancelled(true);
+                    return;
+                }
+                if (active.aliveHiders.contains(attacker.getUniqueId())
+                        && victim.getUniqueId().equals(active.hunter)) {
+                    applyVanillaMobHit(attacker, victim, active.mobForms.getOrDefault(attacker.getUniqueId(), "PIG"));
+                }
                 return;
             }
         }
         event.setCancelled(true);
     }
+    private void applyVanillaMobHit(Player mobPlayer, Player target, String mob) {
+        PotionEffect effect = switch (mob) {
+            case "WITHER_SKELETON" -> new PotionEffect(PotionEffectType.WITHER, 100, 0, true, true, true);
+            case "CAVE_SPIDER", "BEE", "BOGGED" -> new PotionEffect(PotionEffectType.POISON, 80, 0, true, true, true);
+            case "HUSK" -> new PotionEffect(PotionEffectType.HUNGER, 200, 0, true, true, true);
+            case "STRAY" -> new PotionEffect(PotionEffectType.SLOWNESS, 100, 0, true, true, true);
+            case "SHULKER" -> new PotionEffect(PotionEffectType.LEVITATION, 40, 0, true, true, true);
+            case "WARDEN" -> new PotionEffect(PotionEffectType.DARKNESS, 100, 0, true, true, true);
+            default -> null;
+        };
+        if (effect != null) {
+            target.addPotionEffect(effect);
+            mobPlayer.getWorld().playSound(target.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_HURT, 0.7f, 1.2f);
+        }
+    }
+
     @EventHandler
     public void onMobHuntDeath(PlayerDeathEvent event) {
         Match active = match;
