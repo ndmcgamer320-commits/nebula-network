@@ -52,6 +52,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     private NebulaGames games;
     private NebulaHud hud;
     private NebulaNetworkFeatures networkFeatures;
+    private MobHuntGame mobHunt;
     private final Map<UUID, UUID> lastMessaged = new HashMap<>();
     private File lastSurvivalFile;
     private YamlConfiguration lastSurvival;
@@ -94,6 +95,8 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         hud.enable();
         networkFeatures = new NebulaNetworkFeatures(this);
         networkFeatures.enable();
+        mobHunt = new MobHuntGame(this, lobby);
+        mobHunt.enable();
         Bukkit.getScheduler().runTaskLater(this, () -> {
             regenerateArena(Bukkit.getWorld("bedwars_1"), "bedwars_1");
             regenerateArena(Bukkit.getWorld("duel_arena"), "duel_arena");
@@ -415,6 +418,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         inv.setItem(13, item(Material.RED_BED, "BedWars", List.of("Queue for 1v1, 2v2 or 3v3", "Speak to the BedWars NPC")));
         inv.setItem(14, item(Material.IRON_SWORD, "CPvP Duels", List.of("Player queue or practice bot", "Custom layered grass arena")));
         inv.setItem(15, item(Material.GOLD_BLOCK, "Lucky Pillars", List.of("Arena setup required before matches")));
+        inv.setItem(16, item(Material.ZOMBIE_HEAD, "Mob Hunt", List.of("Hide as a random mob in a village", "3 rounds • Random hunter each round")));
         inv.setItem(22, item(Material.NETHER_STAR, "Lobby", List.of("Return to the protected lobby")));
         player.openInventory(inv);
     }
@@ -461,7 +465,8 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             else if (slot == 15) {
                 p.closeInventory();
                 p.sendMessage(PREFIX + "Lucky Pillars is not configured yet.");
-            } else if (slot == 22) { p.closeInventory(); p.teleport(lobby); }
+            } else if (slot == 16) { p.closeInventory(); mobHunt.openMenu(p); }
+            else if (slot == 22) { p.closeInventory(); p.teleport(lobby); }
             return;
         }
         if (slot == 10) {
@@ -577,11 +582,12 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         sender.sendMessage(ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "✦ NEBULA NETWORK HELP ✦");
         if (section.equals("all") || section.equals("player")) {
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "PLAYER: " + ChatColor.GRAY
-                    + "/spawn, /menu, /settings, /rtp, /bedwars, /duel, /stats, /profile, /ping, /report, /leaderboard");
+                    + "/spawn, /menu, /settings, /rtp, /bedwars, /duel, /mobhunt, /stats, /profile, /ping, /report, /leaderboard");
             sender.sendMessage(ChatColor.GRAY + "  /duel player | /duel queue | /duel bot | /duel accept | /duel deny | /duel leave");
             sender.sendMessage(ChatColor.GRAY + "  /rank — view your current network rank");
         }
         if (section.equals("all") || section.equals("arena")) {
+            sender.sendMessage(ChatColor.GRAY + "  /mobhunt [join|leave|status] — enter the Mob Hunt queue");
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "ARENA: " + ChatColor.GRAY
                     + "/bedwars, /duel, /duel queue, /duel bot");
             sender.sendMessage(ChatColor.GRAY + "  Arena worlds: bedwars_1 and duel_arena");
@@ -702,6 +708,11 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         }
         if (command.getName().equalsIgnoreCase("bedwars")) {
             if (sender instanceof Player p) games.handleBedWarsCommand(p, args); else sender.sendMessage("Players only.");
+            return true;
+        }
+        if (command.getName().equalsIgnoreCase("mobhunt")) {
+            if (sender instanceof Player p) mobHunt.handleCommand(p, args);
+            else sender.sendMessage("Players only.");
             return true;
         }
         if (command.getName().equalsIgnoreCase("duel")) {
