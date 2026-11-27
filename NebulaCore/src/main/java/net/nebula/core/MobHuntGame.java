@@ -24,6 +24,8 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
+import org.bukkit.entity.Fireball;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
@@ -89,6 +91,7 @@ public final class MobHuntGame implements Listener {
     private static final int HUNTER_LIVES = 3;
     private static final String MOB_PICK_TITLE = ChatColor.DARK_GREEN + "Choose Your Mob";
     private static final String MOB_SEARCH_TITLE = ChatColor.DARK_AQUA + "Mob Search";
+    private static final String ABILITY_TITLE = ChatColor.DARK_PURPLE + "Mob Ability Cooldowns";
     private static final int HUNTER_HIDE_SECONDS = 15;
     private static final List<String> MOB_TYPES = List.of(
             "PIG", "COW", "SHEEP", "CHICKEN", "WOLF", "CAT", "FOX", "RABBIT",
@@ -377,6 +380,13 @@ public final class MobHuntGame implements Listener {
                 }
             }, HUNTER_HIDE_SECONDS * 20L);
         }
+        active.mobPickTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (match != active || active.roundEnded || active.ending) return;
+            for (UUID pending : new ArrayList<>(active.mobPickPending)) {
+                Player hider = Bukkit.getPlayer(pending);
+                if (hider != null) assignMob(active, hider, MOB_TYPES.get(random.nextInt(MOB_TYPES.size())));
+            }
+        }, MOB_PICK_SECONDS * 20L);
         active.roundTask = new BukkitRunnable() {
             @Override public void run() {
                 if (match != active || active.ending || active.roundEnded) {
@@ -433,6 +443,7 @@ public final class MobHuntGame implements Listener {
     }
 
     private void giveHiderKit(Player player) {
+        player.getInventory().setItem(0, named(Material.CLOCK, ChatColor.LIGHT_PURPLE + "Mob Ability", "Right-click to view ability and cooldown"));
         player.getInventory().setItem(7, new ItemStack(Material.ENDER_PEARL, 2));
         player.getInventory().setItem(8, new ItemStack(Material.COOKED_BEEF, 5));
     }
@@ -611,6 +622,83 @@ public final class MobHuntGame implements Listener {
         }
     }
 
+    private String abilityName(String mob) {
+        return switch (mob) {
+            case "WARDEN" -> "Sonic Pulse"; case "CREEPER" -> "Creeper Burst"; case "GHAST" -> "Ghast Fireball";
+            case "BEE" -> "Sting"; case "SPIDER", "CAVE_SPIDER" -> "Web Dash";
+            case "SLIME", "MAGMA_CUBE", "FROG", "RABBIT" -> "Mega Jump";
+            case "WOLF", "FOX", "CAT" -> "Pounce"; default -> "Mob Strike";
+        };
+    }
+    private long abilityCooldown(String mob) {
+        return switch (mob) { case "WARDEN", "GHAST", "CREEPER" -> 15000L; case "BEE", "SPIDER", "CAVE_SPIDER" -> 10000L; default -> 8000L; };
+    }
+    private void openAbilityGui(Player player) {
+        Match active = match;
+        if (active == null || !active.aliveHiders.contains(player.getUniqueId())) return;
+        String mob = active.mobForms.getOrDefault(player.getUniqueId(), "PIG");
+        long remain = Math.max(0L, active.abilityReadyAt.getOrDefault(player.getUniqueId(), 0L) - System.currentTimeMillis());
+        Inventory inv = Bukkit.createInventory(null, 27, ABILITY_TITLE);
+        inv.setItem(11, named(Material.NETHER_STAR, ChatColor.GREEN + "Use " + abilityName(mob), "Mob: " + pretty(mob), remain == 0 ? "Ready now!" : "Cooldown: " + (remain / 1000.0) + "s"));
+        inv.setItem(15, named(Material.CLOCK, ChatColor.AQUA + "Cooldown Status", remain == 0 ? "Ability ready" : "Available in " + (remain / 1000.0) + " seconds"));
+        player.openInventory(inv);
+    }
+    private void useMobAbility(Player player, Match active) {
+        UUID id = player.getUniqueId();
+        String mob = active.mobForms.getOrDefault(id, "PIG");
+        long now = System.currentTimeMillis(), readyAt = active.abilityReadyAt.getOrDefault(id, 0L);
+        if (now < readyAt) { player.sendMessage(PREFIX + ChatColor.RED + "Ability cooldown: " + ((readyAt - now + 999) / 1000) + "s."); openAbilityGui(player); return; }
+        active.abilityReadyAt.put(id, now + abilityCooldown(mob));
+        Player hunter = Bukkit.getPlayer(active.hunter);
+        switch (mob) {
+            case "WARDEN" -> {
+                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 100) {
+                    hunter.damage(6.0, player);
+                    hunter.setVelocity(hunter.getLocation().toVector().subtract(player.getLocation().toVector()).normalize().multiply(0.8));
+                }
+                player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_WARDEN_SONIC_BOOM, 1f, 1f);
+            }
+            case "CREEPER" -> {
+                player.getWorld().createExplosion(player.getLocation(), 0f, false, false);
+                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 25) hunter.damage(5.0, player);
+            }
+            case "GHAST" -> { Fireball fireball = player.launchProjectile(Fireball.class); fireball.setIsIncendiary(false); fireball.setYield(0f); }
+            case "BEE" -> {
+                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 16) {
+                    hunter.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 60, 0)); hunter.damage(2.0, player);
+                }
+            }
+            case "SPIDER", "CAVE_SPIDER" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 2)); player.setVelocity(player.getLocation().getDirection().multiply(1.1).setY(0.35)); }
+            case "SLIME", "MAGMA_CUBE", "FROG", "RABBIT" -> {
+                player.setVelocity(player.getLocation().getDirection().multiply(0.8).setY(0.9));
+                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player);
+            }
+            case "WOLF", "FOX", "CAT" -> {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2));
+                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player);
+            }
+            default -> { if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player); player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 1)); }
+        }
+        player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
+    }
+    @EventHandler
+    public void onAbilityItem(PlayerInteractEvent event) {
+        ItemStack item = event.getItem();
+        if (item == null || !item.hasItemMeta() || !ChatColor.stripColor(item.getItemMeta().getDisplayName()).equals("Mob Ability")) return;
+        Match active = match;
+        if (active == null || !active.aliveHiders.contains(event.getPlayer().getUniqueId())) return;
+        event.setCancelled(true); openAbilityGui(event.getPlayer());
+    }
+    @EventHandler
+    public void onAbilityGuiClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player) || !event.getView().getTitle().equals(ABILITY_TITLE)) return;
+        event.setCancelled(true);
+        if (event.getRawSlot() != 11) return;
+        Match active = match;
+        if (active == null || !active.aliveHiders.contains(player.getUniqueId())) return;
+        player.closeInventory(); useMobAbility(player, active);
+    }
+
     private void updateHunterCompass(Match active) {
         Player hunter = Bukkit.getPlayer(active.hunter);
         if (hunter == null || !hunter.isOnline() || !hunter.getWorld().equals(world)) return;
@@ -784,7 +872,8 @@ public final class MobHuntGame implements Listener {
             else if (byEntity.getDamager() instanceof Projectile projectile && projectile.getShooter() instanceof Player p) attacker = p;
             if (attacker != null && active.players.contains(attacker.getUniqueId())
                     && (active.aliveHiders.contains(attacker.getUniqueId()) || attacker.getUniqueId().equals(active.hunter))
-                    && (active.aliveHiders.contains(victim.getUniqueId()) || victim.getUniqueId().equals(active.hunter))) {
+                    && (active.aliveHiders.contains(victim.getUniqueId()) || victim.getUniqueId().equals(active.hunter))
+                    && (attacker.getUniqueId().equals(active.hunter) != victim.getUniqueId().equals(active.hunter))) {
                 if (attacker.getUniqueId().equals(victim.getUniqueId())) event.setCancelled(true);
                 return;
             }
