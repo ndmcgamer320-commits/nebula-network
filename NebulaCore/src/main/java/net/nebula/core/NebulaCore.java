@@ -86,7 +86,8 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         if (lastSurvivalFile.exists()) lastSurvival = YamlConfiguration.loadConfiguration(lastSurvivalFile);
         else lastSurvival = new YamlConfiguration();
 
-        buildLobby();
+        // Do not rebuild the lobby on startup. The lobby world is persistent player-built
+        // data; rebuilding it here overwrites custom edits every time the server restarts.
         applyLobbyBorder();
         Bukkit.getPluginManager().registerEvents(this, this);
         games = new NebulaGames(this, lobby);
