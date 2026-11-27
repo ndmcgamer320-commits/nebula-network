@@ -348,7 +348,7 @@ public final class MobHuntGame implements Listener {
             if (player == null) continue;
             resetForRound(player);
             if (id.equals(active.hunter)) {
-                player.teleport(new Location(world, 0.5, world.getHighestBlockYAt(0, 0) + 1.0, 0.5));
+                player.teleport(randomVillageSpawn());
                 player.setWalkSpeed(0.0f);
                 player.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, HUNTER_HIDE_SECONDS * 20, 0, false, false, true));
                 player.sendTitle(ChatColor.RED + "YOU ARE THE HUNTER",
@@ -515,13 +515,13 @@ public final class MobHuntGame implements Listener {
             // from the hider's own client. This preserves the normal Steve first-person
             // camera, hand rendering, mouse look and player movement without a mob model
             // clipping through the camera.
-            disguise.setSelfDisguiseVisible(false);
+            disguise.setSelfDisguiseVisible(true);
             DisguiseAPI.disguiseToAll(player, disguise);
         } catch (IllegalArgumentException ex) {
             MobDisguise fallback = new MobDisguise(DisguiseType.PIG, true);
             fallback.setScalePlayerToDisguise(true);
             fallback.setModifyBoundingBox(true);
-            fallback.setSelfDisguiseVisible(false);
+            fallback.setSelfDisguiseVisible(true);
             DisguiseAPI.disguiseToAll(player, fallback);
             plugin.getLogger().warning("Mob Hunt disguise type " + mobName + " is unavailable; using PIG.");
         }
@@ -730,8 +730,8 @@ public final class MobHuntGame implements Listener {
         Match active = match;
         if (active == null || !active.aliveHiders.contains(event.getPlayer().getUniqueId())) return;
         event.setCancelled(true);
-        if (usesSwapHands(event.getPlayer())) openAbilityGui(event.getPlayer());
-        else useMobAbility(event.getPlayer(), active);
+        if (!usesSwapHands(event.getPlayer())) useMobAbility(event.getPlayer(), active);
+        else openAbilityGui(event.getPlayer());
     }
     @EventHandler
     public void onAbilityGuiClick(InventoryClickEvent event) {
@@ -782,7 +782,9 @@ public final class MobHuntGame implements Listener {
             finishMatch(active);
         } else {
             broadcastToMatch(active, ChatColor.LIGHT_PURPLE + "Next round begins in 5 seconds...");
-            Bukkit.getScheduler().runTaskLater(plugin, () -> startRound(active), 100L);
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (match == active && !active.ending && active.roundEnded) startRound(active);
+            }, 100L);
         }
     }
 
@@ -801,9 +803,16 @@ public final class MobHuntGame implements Listener {
             Player player = Bukkit.getPlayer(id);
             if (player == null || !player.isOnline()) continue;
             DisguiseAPI.undisguiseToAll(player);
+            // Clear all temporary match state before restoring the lobby snapshot.
+            for (PotionEffect effect : player.getActivePotionEffects()) player.removePotionEffect(effect.getType());
+            player.setAllowFlight(false);
+            player.setFlying(false);
+            player.setWalkSpeed(0.2f);
+            player.setFlySpeed(0.1f);
             PlayerSnapshot snapshot = active.snapshots.get(id);
             if (snapshot != null) snapshot.restoreAtLobby(player, lobby);
             else player.teleport(lobby);
+            player.updateInventory();
             player.sendTitle(ChatColor.GOLD + "MOB HUNT OVER",
                     ChatColor.GRAY + "Winner: " + (winnerNames.isBlank() ? "No winner" : winnerNames), 5, 70, 15);
         }
@@ -942,11 +951,16 @@ public final class MobHuntGame implements Listener {
         Match active = match;
         Player player = event.getPlayer();
         if (active == null || !active.players.contains(player.getUniqueId())) return;
-        event.setRespawnLocation(new Location(world, 0.5, arenaBaseY + 1.0, 0.5));
+        event.setRespawnLocation(randomVillageSpawn());
         Bukkit.getScheduler().runTask(plugin, () -> {
+            if (match != active || active.ending) return;
+            player.closeInventory();
+            player.getInventory().clear();
+            player.getInventory().setArmorContents(null);
+            player.getInventory().setItemInOffHand(null);
             if (match != active || active.roundEnded || active.ending) return;
             if (player.getUniqueId().equals(active.hunter)) {
-                player.setGameMode(GameMode.ADVENTURE);
+                player.setGameMode(GameMode.SURVIVAL);
                 player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
                 giveHunterBaseKit(player);
                 player.sendTitle(ChatColor.RED + "HUNTER RESPAWN", ChatColor.GRAY + "" + active.hunterLives + " lives left", 5, 35, 10);
@@ -1045,8 +1059,8 @@ public final class MobHuntGame implements Listener {
         // plugin-built collection of placeholder houses. The workflow recreates
         // this world from the fixed seed on each server start.
         Location origin = new Location(world, 0, 80, 0);
-        List<String> villageKeys = List.of("village_plains", "village_desert", "village_savanna",
-                "village_snowy", "village_taiga");
+        // Plains only: avoid snowy/taiga/desert villages for this arena.
+        List<String> villageKeys = List.of("village_plains");
         Location village = null;
         double nearestDistance = Double.MAX_VALUE;
         for (String key : villageKeys) {
