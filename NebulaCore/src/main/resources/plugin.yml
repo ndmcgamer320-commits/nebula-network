@@ -39,7 +39,7 @@ commands:
     usage: /bedwars [leave]
   mobhunt:
     description: Join the Mob Hunt hide-and-seek queue.
-    usage: /mobhunt [join|leave|status]
+    usage: /mobhunt [join|leave|status|party|private|stats|leaderboard|history|admin]
   duel:
     description: Challenge players, queue, practice the bot or edit your kit.
     usage: /duel [queue|bot|edit|leave]

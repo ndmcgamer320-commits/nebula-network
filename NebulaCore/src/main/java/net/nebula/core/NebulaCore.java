@@ -61,6 +61,11 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     private static final String SETTINGS_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA SETTINGS";
 
     @Override
+    public void onDisable() {
+        if (mobHunt != null) mobHunt.shutdown();
+    }
+
+    @Override
     public void onEnable() {
         // Multiverse-Core creates and manages a dedicated empty lobby world.
         World lobbyWorld = Bukkit.getWorld("lobby");
@@ -95,8 +100,13 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         hud.enable();
         networkFeatures = new NebulaNetworkFeatures(this);
         networkFeatures.enable();
-        mobHunt = new MobHuntGame(this, lobby);
-        mobHunt.enable();
+        if (Bukkit.getPluginManager().isPluginEnabled("LibsDisguises")) {
+            mobHunt = new MobHuntGame(this, lobby);
+            mobHunt.enable();
+        } else {
+            mobHunt = null;
+            getLogger().severe("Mob Hunt is disabled because LibsDisguises did not load. The network lobby and other games will continue.");
+        }
         Bukkit.getScheduler().runTaskLater(this, () -> {
             regenerateArena(Bukkit.getWorld("bedwars_1"), "bedwars_1");
             regenerateArena(Bukkit.getWorld("duel_arena"), "duel_arena");
@@ -201,7 +211,9 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 if (!player.isOnline()) { cancel(); return; }
                 AuthMeApi authMe = AuthMeApi.getInstance();
                 if (authMe != null && authMe.isAuthenticated(player)) {
-                    returnPlayerToLobby(player);
+                    boolean resumedMobHunt = mobHunt != null && mobHunt.handleReconnect(player);
+                    if (!resumedMobHunt) returnPlayerToLobby(player);
+                    else if (hud != null) hud.refreshPlayer(player);
                     player.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
                     Bukkit.broadcastMessage(PREFIX + ChatColor.WHITE + player.getName() + ChatColor.GRAY + " joined the network.");
                     cancel();
@@ -711,8 +723,10 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             return true;
         }
         if (command.getName().equalsIgnoreCase("mobhunt")) {
-            if (sender instanceof Player p) mobHunt.handleCommand(p, args);
-            else sender.sendMessage("Players only.");
+            if (sender instanceof Player p) {
+                if (mobHunt == null) p.sendMessage(PREFIX + ChatColor.RED + "Mob Hunt is temporarily unavailable because its disguise dependency did not load.");
+                else mobHunt.handleCommand(p, args);
+            } else sender.sendMessage("Players only.");
             return true;
         }
         if (command.getName().equalsIgnoreCase("duel")) {
