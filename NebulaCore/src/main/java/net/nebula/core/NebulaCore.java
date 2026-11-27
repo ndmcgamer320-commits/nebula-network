@@ -577,7 +577,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         sender.sendMessage(ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "✦ NEBULA NETWORK HELP ✦");
         if (section.equals("all") || section.equals("player")) {
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "PLAYER: " + ChatColor.GRAY
-                    + "/spawn, /menu, /settings, /rtp, /bedwars, /duel, /stats, /leaderboard");
+                    + "/spawn, /menu, /settings, /rtp, /bedwars, /duel, /stats, /profile, /ping, /report, /leaderboard");
             sender.sendMessage(ChatColor.GRAY + "  /duel player | /duel queue | /duel bot | /duel accept | /duel deny | /duel leave");
             sender.sendMessage(ChatColor.GRAY + "  /rank — view your current network rank");
         }
