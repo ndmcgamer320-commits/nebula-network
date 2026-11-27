@@ -797,6 +797,7 @@ public final class MobHuntGame implements Listener {
 
     @EventHandler
     public void onAbilityItem(PlayerInteractEvent event) {
+        ItemStack item = event.getItem();
         Player player = event.getPlayer();
         Match active = match;
         if (active == null || !active.aliveHiders.contains(player.getUniqueId())
