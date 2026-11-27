@@ -571,6 +571,57 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         p.sendMessage(PREFIX + "Couldn't find a safe location. Try /rtp again.");
     }
 
+
+    private void sendNebulaHelp(CommandSender sender, String category) {
+        String section = category == null ? "all" : category.toLowerCase(java.util.Locale.ROOT);
+        sender.sendMessage(ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "✦ NEBULA NETWORK HELP ✦");
+        if (section.equals("all") || section.equals("player")) {
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "PLAYER: " + ChatColor.GRAY
+                    + "/spawn, /menu, /settings, /rtp, /bedwars, /duel");
+            sender.sendMessage(ChatColor.GRAY + "  /duel player | /duel queue | /duel bot | /duel accept | /duel deny | /duel leave");
+            sender.sendMessage(ChatColor.GRAY + "  /rank — view your current network rank");
+        }
+        if (section.equals("all") || section.equals("arena")) {
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "ARENA: " + ChatColor.GRAY
+                    + "/bedwars, /duel, /duel queue, /duel bot, /duel player");
+            sender.sendMessage(ChatColor.GRAY + "  Arena worlds: bedwars_1 and duel_arena");
+        }
+        if (section.equals("all") || section.equals("ranks")) {
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "RANKS: " + ChatColor.GRAY
+                    + "/rank — view your rank");
+            sender.sendMessage(ChatColor.GRAY + "  /rank <player> <OWNER|ADMIN|MVP|VIP|MEMBER> — staff only");
+        }
+        if (section.equals("all") || section.equals("admin")) {
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "ADMIN: " + ChatColor.GRAY
+                    + "/setlobby, /arenareset [bedwars|duel|all], /nebula lagclear");
+            sender.sendMessage(ChatColor.GRAY + "  /nebula help admin — show this section");
+        }
+        if (!List.of("all", "player", "arena", "admin", "ranks").contains(section)) {
+            sender.sendMessage(PREFIX + ChatColor.RED + "Categories: player, arena, admin, ranks.");
+            return;
+        }
+        sender.sendMessage(ChatColor.DARK_GRAY + "Use /nebula help <category> for a section.");
+    }
+
+    private void clearDroppedItems(CommandSender sender) {
+        if (!hasNetworkAdmin(sender)) {
+            sender.sendMessage(PREFIX + ChatColor.RED + "You need ADMIN or OWNER permission to clear dropped items.");
+            return;
+        }
+        int removed = 0;
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof org.bukkit.entity.Item) {
+                    entity.remove();
+                    removed++;
+                }
+            }
+        }
+        sender.sendMessage(PREFIX + ChatColor.GREEN + "Lag clear complete. Removed " + removed
+                + " dropped item entities. Player inventories and chests were not touched.");
+        getLogger().info(sender.getName() + " cleared " + removed + " dropped item entities.");
+    }
+
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (command.getName().equalsIgnoreCase("setlobby")) {
             if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
@@ -626,8 +677,22 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             else sender.sendMessage("Players only.");
             return true;
         }
-        if (command.getName().equalsIgnoreCase("menu") || command.getName().equalsIgnoreCase("nebula")) {
+        if (command.getName().equalsIgnoreCase("menu")) {
             if (sender instanceof Player p) openMenu(p);
+            else sender.sendMessage("Players only.");
+            return true;
+        }
+        if (command.getName().equalsIgnoreCase("nebula")) {
+            if (args.length > 0 && args[0].equalsIgnoreCase("help")) {
+                sendNebulaHelp(sender, args.length > 1 ? args[1] : null);
+                return true;
+            }
+            if (args.length > 0 && (args[0].equalsIgnoreCase("lagclear") || args[0].equalsIgnoreCase("clear"))) {
+                clearDroppedItems(sender);
+                return true;
+            }
+            if (sender instanceof Player p) openMenu(p);
+            else sendNebulaHelp(sender, null);
             return true;
         }
         return false;
