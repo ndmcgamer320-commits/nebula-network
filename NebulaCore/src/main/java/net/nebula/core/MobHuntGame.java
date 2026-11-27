@@ -764,7 +764,7 @@ public final class MobHuntGame implements Listener {
                 world.getBlockAt(x, base - 2, z).setType(Material.STONE, false);
                 for (int y = base + 1; y <= base + 16; y++) world.getBlockAt(x, y, z).setType(Material.AIR, false);
                 if (Math.abs(x) <= 3 || Math.abs(z) <= 3) {
-                    world.getBlockAt(x, base, z).setType(Material.PATH_BLOCK, false);
+                    world.getBlockAt(x, base, z).setType(Material.DIRT_PATH, false);
                 }
             }
         }
