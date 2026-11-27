@@ -1465,40 +1465,30 @@ public final class MobHuntGame implements Listener {
         // Use a genuine vanilla-generated village in a normal overworld, not a
         // plugin-built collection of placeholder houses. The workflow recreates
         // this world from the fixed seed on each server start.
-        Location origin = new Location(world, 0, 80, 0);
-        // Plains only: avoid snowy/taiga/desert villages for this arena.
-        List<String> villageKeys = List.of("village_plains");
-        Location village = null;
-        double nearestDistance = Double.MAX_VALUE;
-        for (String key : villageKeys) {
-            Structure structure = Registry.STRUCTURE.get(NamespacedKey.minecraft(key));
-            if (structure == null) continue;
-            StructureSearchResult result = world.locateNearestStructure(origin, structure, 64, false);
+        List<int[]> searchOrigins = List.of(
+                new int[]{0, 0}, new int[]{3600, 0}, new int[]{0, 3600},
+                new int[]{-3600, 0}, new int[]{0, -3600}, new int[]{3600, 3600},
+                new int[]{-3600, -3600});
+        Structure plainsVillage = Registry.STRUCTURE.get(NamespacedKey.minecraft("village_plains"));
+        if (plainsVillage == null) throw new IllegalStateException("Plains village structure is unavailable.");
+        arenas.clear();
+        for (int[] point : searchOrigins) {
+            Location origin = new Location(world, point[0], 80, point[1]);
+            StructureSearchResult result = world.locateNearestStructure(origin, plainsVillage, 128, false);
             if (result == null) continue;
-            Location candidate = result.getLocation();
-            double distance = candidate.distanceSquared(origin);
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                village = candidate;
+            Location found = result.getLocation();
+            boolean duplicate = false;
+            for (Arena existing : arenas) {
+                double dx = existing.x - found.getBlockX();
+                double dz = existing.z - found.getBlockZ();
+                if (dx * dx + dz * dz < 1800.0 * 1800.0) { duplicate = true; break; }
             }
+            if (!duplicate) arenas.add(new Arena("Village " + (arenas.size() + 1), found.getBlockX(), found.getBlockZ()));
+            if (arenas.size() >= 5) break;
         }
-        if (village == null) {
-            throw new IllegalStateException("No vanilla village found near the Mob Hunt seed; refusing to build a fake village.");
-        }
-        arenaCenterX = village.getBlockX();
-        arenaCenterZ = village.getBlockZ();
-        world.getChunkAt(arenaCenterX >> 4, arenaCenterZ >> 4).load(true);
-        arenaBaseY = world.getHighestBlockYAt(arenaCenterX, arenaCenterZ);
-        world.setSpawnLocation(arenaCenterX, arenaBaseY + 1, arenaCenterZ);
-
-        WorldBorder border = world.getWorldBorder();
-        border.setCenter(arenaCenterX + 0.5, arenaCenterZ + 0.5);
-        border.setSize(160.0);
-        border.setDamageBuffer(0.0);
-        border.setDamageAmount(0.0);
-        border.setWarningDistance(8);
-        plugin.getLogger().info("Using naturally generated Minecraft village at "
-                + arenaCenterX + ", " + arenaCenterZ + " in seed " + world.getSeed());
+        if (arenas.isEmpty()) throw new IllegalStateException("No vanilla-generated plains village found; refusing to build a fake village.");
+        activateArena(arenas.get(0));
+        plugin.getLogger().info("Discovered " + arenas.size() + " naturally generated Mob Hunt village maps in seed " + world.getSeed() + ".");
     }
 
     private static final class Arena {
