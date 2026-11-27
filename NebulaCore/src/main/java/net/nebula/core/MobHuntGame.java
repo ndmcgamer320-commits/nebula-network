@@ -1049,7 +1049,7 @@ public final class MobHuntGame implements Listener {
         world.setGameRule(GameRule.DO_WEATHER_CYCLE, false);
         world.setGameRule(GameRule.DO_MOB_SPAWNING, false);
         world.setGameRule(GameRule.KEEP_INVENTORY, true);
-        int base = Math.max(world.getMinHeight() + 4, world.getHighestBlockYAt(0, 0));
+        int base = arenaBaseY > 0 ? arenaBaseY : Math.max(world.getMinHeight() + 4, world.getHighestBlockYAt(0, 0));
         arenaBaseY = base;
         for (int x = -48; x <= 48; x++) {
             for (int z = -48; z <= 48; z++) {
