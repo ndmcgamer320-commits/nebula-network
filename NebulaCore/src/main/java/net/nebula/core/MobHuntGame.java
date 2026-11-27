@@ -15,6 +15,7 @@ import org.bukkit.World;
 import org.bukkit.WorldBorder;
 import org.bukkit.WorldCreator;
 import org.bukkit.WorldType;
+import org.bukkit.Registry;
 import org.bukkit.generator.structure.Structure;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
@@ -1043,7 +1044,21 @@ public final class MobHuntGame implements Listener {
         // plugin-built collection of placeholder houses. The workflow recreates
         // this world from the fixed seed on each server start.
         Location origin = new Location(world, 0, 80, 0);
-        Location village = world.locateNearestStructure(origin, Structure.VILLAGE, 64, false);
+        List<String> villageKeys = List.of("village_plains", "village_desert", "village_savanna",
+                "village_snowy", "village_taiga");
+        Location village = null;
+        double nearestDistance = Double.MAX_VALUE;
+        for (String key : villageKeys) {
+            Structure structure = Registry.STRUCTURE.get(NamespacedKey.minecraft(key));
+            if (structure == null) continue;
+            Location candidate = world.locateNearestStructure(origin, structure, 64, false);
+            if (candidate == null) continue;
+            double distance = candidate.distanceSquared(origin);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                village = candidate;
+            }
+        }
         if (village == null) {
             throw new IllegalStateException("No vanilla village found near the Mob Hunt seed; refusing to build a fake village.");
         }
