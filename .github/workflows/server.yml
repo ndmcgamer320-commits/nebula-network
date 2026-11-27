@@ -223,6 +223,13 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare natural Mob Hunt village world
+        run: |
+          # Remove the previous flat/generated arena so Paper creates a fresh
+          # normal overworld from the fixed seed and generates vanilla villages.
+          rm -rf mob_hunt
+          echo "Mob Hunt will generate a real vanilla village from its configured seed."
+
       - name: Run Minecraft server
         env:
           RUNTIME_HOURS: ${{ inputs.runtime_hours }}
