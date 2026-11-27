@@ -167,7 +167,7 @@ jobs:
 
       - name: Install Simple Voice Chat for Paper
         env:
-          VOICE_HOST: ${{ vars.VOICE_HOST }}
+          VOICE_HOST: ${{ vars.VOICE_HOST || 'stallion-frontpage.tun.ply.gg:15458' }}
         run: |
           set -euo pipefail
           SVC_VERSIONS=$(curl -fsSL -G \
