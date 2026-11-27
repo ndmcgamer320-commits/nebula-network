@@ -201,7 +201,8 @@ public final class MobHuntGame implements Listener {
             case "private" -> handlePrivateCommand(player, args);
             case "stats" -> showStats(player, args.length > 1 ? args[1] : player.getName());
             case "leaderboard", "top" -> showLeaderboard(player);
-            default -> player.sendMessage(PREFIX + "Use /mobhunt [join|leave|status|party|private|stats|leaderboard|admin].");
+            case "history" -> showHistory(player);
+            default -> player.sendMessage(PREFIX + "Use /mobhunt [join|leave|status|party|private|stats|leaderboard|history|admin].");
         }
     }
 
@@ -315,7 +316,7 @@ public final class MobHuntGame implements Listener {
     }
 
     private int configuredHunterLives() {
-        return Math.max(1, Math.min(10, plugin.getConfig().getInt("mobhunt.hunter-lives", HUNTER_LIVES)));
+        return Math.max(1, Math.min(5, plugin.getConfig().getInt("mobhunt.hunter-lives", HUNTER_LIVES)));
     }
 
     private int configuredMobPickSeconds() {
@@ -341,6 +342,24 @@ public final class MobHuntGame implements Listener {
                 + ChatColor.GRAY + " • Survival: " + ChatColor.AQUA + plugin.getConfig().getInt(path + ".survival-seconds", 0) + "s");
         viewer.sendMessage(ChatColor.GRAY + "Best points: " + ChatColor.GOLD + plugin.getConfig().getInt(path + ".best-points", 0)
                 + ChatColor.GRAY + " • Favorite mob: " + ChatColor.LIGHT_PURPLE + plugin.getConfig().getString(path + ".favorite-mob", "N/A"));
+    }
+
+    private void showHistory(Player viewer) {
+        List<Map<?, ?>> records = history.getMapList("matches");
+        if (records.isEmpty()) { viewer.sendMessage(PREFIX + "No completed Mob Hunt matches have been recorded yet."); return; }
+        viewer.sendMessage(PREFIX + ChatColor.GOLD + "" + ChatColor.BOLD + "RECENT MOB HUNT MATCHES");
+        int shown = 0;
+        for (int i = records.size() - 1; i >= 0 && shown < 5; i--, shown++) {
+            Map<?, ?> record = records.get(i);
+            Object mapValue = record.get("map");
+            Object winnerValue = record.get("winners");
+            Object roundsValue = record.get("rounds");
+            String map = mapValue == null ? "unknown" : String.valueOf(mapValue);
+            String winners = winnerValue == null ? "No winner" : String.valueOf(winnerValue);
+            String rounds = roundsValue == null ? "0" : String.valueOf(roundsValue);
+            viewer.sendMessage(ChatColor.LIGHT_PURPLE + "#" + (shown + 1) + " " + ChatColor.WHITE + pretty(map)
+                    + ChatColor.GRAY + " • Rounds: " + rounds + " • Winner: " + winners);
+        }
     }
 
     private void showLeaderboard(Player viewer) {
@@ -479,13 +498,17 @@ public final class MobHuntGame implements Listener {
         active.disconnected.remove(id);
         resetForRound(player);
         player.teleport(new Location(world, 0.5, arenaBaseY + 1.0, 0.5));
-        if (id.equals(active.hunter)) {
+        if (active.roundEnded) {
+            player.setGameMode(GameMode.SPECTATOR);
+            player.sendMessage(PREFIX + ChatColor.YELLOW + "You reconnected between rounds. You will rejoin when the next round begins.");
+        } else if (id.equals(active.hunter)) {
             player.setWalkSpeed(active.hunterLocked ? 0.0f : 0.2f);
             if (active.hunterLocked) player.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, Math.max(1, active.secondsLeft) * 20, 0, false, false, true));
             giveHunterBaseKit(player);
             Set<Material> tools = active.selectedTools.getOrDefault(id, Collections.emptySet());
             for (Material tool : tools) player.getInventory().addItem(new ItemStack(tool));
-        } else if (active.aliveHiders.contains(id)) {
+        } else if (active.aliveHiders.contains(id) || !active.tagged.contains(id)) {
+            active.aliveHiders.add(id);
             player.teleport(randomVillageSpawn());
             giveHiderKit(player);
             String mob = active.mobForms.get(id);
@@ -935,7 +958,8 @@ public final class MobHuntGame implements Listener {
             Material icon;
             try { icon = Material.valueOf(mob + "_SPAWN_EGG"); } catch (IllegalArgumentException ex) { icon = Material.PAPER; }
             if (slot >= 45) break;
-            inv.setItem(slot++, named(icon, ChatColor.GREEN + pretty(mob), "Click to choose this mob", "Mob abilities apply automatically"));
+            inv.setItem(slot++, named(icon, ChatColor.GREEN + pretty(mob), abilityName(mob), abilityDescription(mob),
+                    "Ability cooldown: " + (configuredAbilityCooldown(mob) / 1000L) + "s"));
         }
         inv.setItem(49, named(Material.COMPASS, ChatColor.AQUA + "Search mobs", "Click, then type a mob name in chat", "Current filter: " + (filter.isBlank() ? "none" : filter)));
         inv.setItem(53, named(Material.BARRIER, ChatColor.RED + "Random mob", "Choose a random mob"));
