@@ -88,6 +88,8 @@ public final class MobHuntGame implements Listener {
     private static final String MOB_PICK_TITLE = ChatColor.DARK_GREEN + "Choose Your Mob";
     private static final String MOB_SEARCH_TITLE = ChatColor.DARK_AQUA + "Mob Search";
     private static final String ABILITY_TITLE = ChatColor.DARK_PURPLE + "Mob Ability Cooldowns";
+    private static final String ADMIN_TITLE = ChatColor.DARK_PURPLE + "Mob Hunt Admin Settings";
+    private String currentMap = "village";
     private static final int HUNTER_HIDE_SECONDS = 15;
     private static final List<String> MOB_TYPES = List.of(
             "PIG", "COW", "SHEEP", "CHICKEN", "WOLF", "CAT", "FOX", "RABBIT",
@@ -174,6 +176,7 @@ public final class MobHuntGame implements Listener {
             case "join", "queue" -> joinQueue(player);
             case "leave", "cancel" -> leaveQueue(player);
             case "status" -> sendStatus(player);
+            case "admin" -> { if (!player.hasPermission("nebulacore.admin")) { player.sendMessage(PREFIX + ChatColor.RED + "No permission."); return; } openAdminMenu(player); }
             default -> player.sendMessage(PREFIX + "Use /mobhunt [join|leave|status].");
         }
     }
@@ -297,6 +300,8 @@ public final class MobHuntGame implements Listener {
             return;
         }
         Match next = new Match();
+        next.mapName = plugin.getConfig().getBoolean("mobhunt.random-map", true) ? (random.nextBoolean() ? "village" : "castle") : plugin.getConfig().getString("mobhunt.default-map", "village");
+        if ("castle".equalsIgnoreCase(next.mapName)) buildCastle(); else buildVillage();
         match = next;
         for (Player player : players) {
             next.players.add(player.getUniqueId());
@@ -324,6 +329,9 @@ public final class MobHuntGame implements Listener {
         active.mobForms.clear();
         active.mobPickPending.clear();
         active.hunterLives = HUNTER_LIVES;
+        world.getWorldBorder().setCenter(0.5, 0.5);
+        world.getWorldBorder().setSize("castle".equals(active.mapName) ? 84.0 : 92.0);
+        active.zoneShrunk = false;
 
         List<UUID> candidates = new ArrayList<>(active.players);
         candidates.removeIf(id -> Bukkit.getPlayer(id) == null || !Bukkit.getPlayer(id).isOnline());
@@ -412,6 +420,12 @@ public final class MobHuntGame implements Listener {
                 updateHunterCompass(active);
                 updateAntiCamping(active);
                 updateLastHiderMode(active);
+                updateAfkTracking(active);
+                if (active.secondsLeft <= 60 && !active.zoneShrunk && plugin.getConfig().getBoolean("mobhunt.shrinking-zone", true)) {
+                    active.zoneShrunk = true;
+                    world.getWorldBorder().setSize(24.0, 60L);
+                    broadcastToMatch(active, ChatColor.GOLD + "The final zone is shrinking!");
+                }
                 active.secondsLeft--;
             }
         }.runTaskTimer(plugin, 20L, 20L);
@@ -608,6 +622,10 @@ public final class MobHuntGame implements Listener {
         for (UUID id : new ArrayList<>(active.aliveHiders)) {
             Player hider = Bukkit.getPlayer(id);
             if (hider == null || !hider.isOnline() || !hider.getWorld().equals(world)) continue;
+            if (hider.isFlying() && hider.getLocation().getY() > arenaBaseY + 8) {
+                hider.setFlySpeed(0.025f);
+                hider.sendActionBar(ChatColor.RED + "High-altitude limit: return to the village to regain flight speed.");
+            } else if (hider.isFlying()) hider.setFlySpeed(0.08f);
             if (hider.getLocation().getY() < arenaBaseY - CAMP_LOW_LIMIT) {
                 Location safe = hider.getLocation().clone();
                 safe.setY(world.getHighestBlockYAt(safe.getBlockX(), safe.getBlockZ()) + 1.0);
@@ -726,7 +744,8 @@ public final class MobHuntGame implements Listener {
             double d = hunter.getLocation().distanceSquared(hider.getLocation());
             if (d < distance) { distance = d; nearest = hider; }
         }
-        if (nearest != null) hunter.setCompassTarget(nearest.getLocation());
+        if (nearest != null && !nearest.isSneaking()) hunter.setCompassTarget(nearest.getLocation());
+        else if (nearest != null) hunter.sendActionBar(ChatColor.AQUA + "A hider is moving quietly...");
     }
 
     private void endRound(Match active, boolean hunterWon) {
@@ -766,6 +785,16 @@ public final class MobHuntGame implements Listener {
         List<UUID> winners = active.scores.entrySet().stream()
                 .filter(entry -> entry.getValue() == high).map(Map.Entry::getKey).toList();
         String winnerNames = winners.stream().map(this::nameOf).collect(Collectors.joining(", "));
+        plugin.getConfig().set("mobhunt.matches-completed", plugin.getConfig().getInt("mobhunt.matches-completed", 0) + 1);
+        plugin.getConfig().set("mobhunt.total-rounds", plugin.getConfig().getInt("mobhunt.total-rounds", 0) + active.round);
+        for (UUID id : active.players) {
+            String path = "mobhunt.stats." + id;
+            int points = active.scores.getOrDefault(id, 0);
+            plugin.getConfig().set(path + ".matches", plugin.getConfig().getInt(path + ".matches", 0) + 1);
+            plugin.getConfig().set(path + ".points", plugin.getConfig().getInt(path + ".points", 0) + points);
+            plugin.getConfig().set(path + ".best-points", Math.max(points, plugin.getConfig().getInt(path + ".best-points", 0)));
+        }
+        plugin.saveConfig();
         broadcastToMatch(active, ChatColor.GOLD + "" + ChatColor.BOLD + "MOB HUNT WINNER: "
                 + ChatColor.YELLOW + (winnerNames.isBlank() ? "No winner" : winnerNames)
                 + ChatColor.GRAY + " • " + high + " point(s)");
@@ -808,7 +837,7 @@ public final class MobHuntGame implements Listener {
     }
 
     private Location randomVillageSpawn() {
-        int[][] spots = {
+        int[][] spots = "castle".equals(currentMap) ? new int[][]{{-28,-28},{28,-28},{-28,28},{28,28},{0,-30},{30,0},{0,30},{-30,0},{-14,0},{14,0},{0,-14},{0,14}} : new int[][]{
                 {-23, -23}, {23, -23}, {-23, 23}, {23, 23},
                 {-10, -28}, {10, 28}, {-28, 10}, {28, -10},
                 {0, -30}, {30, 0}, {0, 30}, {-30, 0}
@@ -1011,6 +1040,7 @@ public final class MobHuntGame implements Listener {
     }
 
     private void buildVillage() {
+        currentMap = "village";
         world.setDifficulty(Difficulty.NORMAL);
         world.setTime(6000L);
         world.setStorm(false);
@@ -1047,6 +1077,27 @@ public final class MobHuntGame implements Listener {
         border.setDamageBuffer(0.0);
         border.setDamageAmount(0.0);
         border.setWarningDistance(5);
+    }
+
+    private void buildCastle() {
+        buildVillage();
+        currentMap = "castle";
+        int base = arenaBaseY;
+        for (int x=-42;x<=42;x++) for (int z=-42;z<=42;z++) {
+            if (Math.abs(x)==34 || Math.abs(z)==34) for (int y=base+1;y<=base+7;y++)
+                if ((x+z+y)%11!=0) world.getBlockAt(x,y,z).setType(Material.STONE_BRICKS,false);
+        }
+        for (int[] p : new int[][]{{-34,-34},{34,-34},{-34,34},{34,34}}) {
+            for (int y=base+1;y<=base+13;y++) for (int dx=-3;dx<=3;dx++) for (int dz=-3;dz<=3;dz++)
+                if (Math.abs(dx)==3 || Math.abs(dz)==3) world.getBlockAt(p[0]+dx,y,p[1]+dz).setType(y%4==0?Material.CRACKED_STONE_BRICKS:Material.STONE_BRICKS,false);
+            for (int dx=-4;dx<=4;dx++) for (int dz=-4;dz<=4;dz++) if (Math.abs(dx)==4 || Math.abs(dz)==4)
+                world.getBlockAt(p[0]+dx,base+14,p[1]+dz).setType(Material.MOSSY_STONE_BRICKS,false);
+        }
+        for (int x=-10;x<=10;x++) for (int z=-10;z<=10;z++) if (Math.abs(x)==10 || Math.abs(z)==10)
+            for (int y=base+1;y<=base+8;y++) if (!(Math.abs(x)==10 && z==0 && y<=base+3)) world.getBlockAt(x,y,z).setType(Material.DEEPSLATE_BRICKS,false);
+        for (int x=-3;x<=3;x++) for (int z=-3;z<=3;z++) world.getBlockAt(x,base,z).setType(Material.POLISHED_DEEPSLATE,false);
+        world.getBlockAt(0,base+1,0).setType(Material.CRYING_OBSIDIAN,false);
+        world.getWorldBorder().setCenter(0.5,0.5); world.getWorldBorder().setSize(84.0); world.setSpawnLocation(0,base+1,0);
     }
 
     private void buildHouse(int cx, int cz, int base) {
@@ -1110,7 +1161,42 @@ public final class MobHuntGame implements Listener {
         }
     }
 
+    private void updateAfkTracking(Match active) {
+        for (UUID id : active.players) {
+            Player p=Bukkit.getPlayer(id); if (p==null || !p.isOnline()) continue;
+            Location old=active.lastLocations.get(id), now=p.getLocation();
+            if (old==null || old.getWorld()!=now.getWorld() || old.distanceSquared(now)>0.04) {
+                active.lastLocations.put(id,now.clone()); active.afkTicks.put(id,0); active.afkWarned.remove(id);
+            } else if (active.afkTicks.merge(id,20,Integer::sum)>=1200 && active.afkWarned.add(id)) {
+                p.sendMessage(PREFIX+ChatColor.RED+"AFK warning: move to stay active in this match.");
+                p.sendTitle(ChatColor.RED+"AFK WARNING",ChatColor.GRAY+"Move to remain active",0,35,5);
+            }
+        }
+    }
+
+    private void openAdminMenu(Player p) {
+        Inventory inv=Bukkit.createInventory(null,27,ADMIN_TITLE);
+        boolean maps=plugin.getConfig().getBoolean("mobhunt.random-map",true), zone=plugin.getConfig().getBoolean("mobhunt.shrinking-zone",true);
+        inv.setItem(11,named(maps?Material.LIME_DYE:Material.GRAY_DYE,ChatColor.AQUA+"Random Map Rotation","Status: "+(maps?"ON":"OFF"),"Village / Abandoned Castle"));
+        inv.setItem(13,named(zone?Material.LIME_DYE:Material.GRAY_DYE,ChatColor.AQUA+"Final Shrinking Zone","Status: "+(zone?"ON":"OFF"),"Shrinks during the final 60 seconds"));
+        inv.setItem(15,named(Material.PAPER,ChatColor.LIGHT_PURPLE+"Mob Hunt Statistics","Completed: "+plugin.getConfig().getInt("mobhunt.matches-completed",0),"Rounds: "+plugin.getConfig().getInt("mobhunt.total-rounds",0)));
+        p.openInventory(inv);
+    }
+
+    @EventHandler public void onAdminMenuClick(InventoryClickEvent e) {
+        if (!(e.getWhoClicked() instanceof Player p) || !e.getView().getTitle().equals(ADMIN_TITLE)) return;
+        e.setCancelled(true); if (!p.hasPermission("nebulacore.admin")) return;
+        if (e.getRawSlot()==11) plugin.getConfig().set("mobhunt.random-map",!plugin.getConfig().getBoolean("mobhunt.random-map",true));
+        else if (e.getRawSlot()==13) plugin.getConfig().set("mobhunt.shrinking-zone",!plugin.getConfig().getBoolean("mobhunt.shrinking-zone",true));
+        else return;
+        plugin.saveConfig(); openAdminMenu(p);
+    }
+
     private static final class Match {
+        final Map<UUID, Location> lastLocations = new HashMap<>();
+        final Map<UUID, Integer> afkTicks = new HashMap<>();
+        final Set<UUID> afkWarned = new LinkedHashSet<>();
+        String mapName="village"; boolean zoneShrunk;
         final Set<UUID> players = new LinkedHashSet<>();
         final Set<UUID> aliveHiders = new LinkedHashSet<>();
         final Set<UUID> tagged = new LinkedHashSet<>();
