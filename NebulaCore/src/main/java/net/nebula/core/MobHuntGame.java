@@ -47,6 +47,8 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -54,9 +56,13 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -118,11 +124,25 @@ public final class MobHuntGame implements Listener {
     private boolean ready;
     private int arenaBaseY;
     private final Set<UUID> searchingMob = new LinkedHashSet<>();
+    private final Map<UUID, UUID> partyInvites = new HashMap<>();
+    private final Map<UUID, LinkedHashSet<UUID>> parties = new HashMap<>();
+    private final Map<UUID, UUID> privateInvites = new HashMap<>();
+    private final LinkedHashSet<UUID> privateRoster = new LinkedHashSet<>();
+    private UUID privateHost;
+    private final File recoveryFile;
+    private final File historyFile;
+    private final YamlConfiguration recovery;
+    private final YamlConfiguration history;
 
     public MobHuntGame(JavaPlugin plugin, Location lobby) {
         this.plugin = plugin;
         this.lobby = lobby.clone();
         this.npcKey = new NamespacedKey(plugin, "nebula_mobhunt_npc");
+        plugin.getDataFolder().mkdirs();
+        this.recoveryFile = new File(plugin.getDataFolder(), "mobhunt-recovery.yml");
+        this.historyFile = new File(plugin.getDataFolder(), "mobhunt-history.yml");
+        this.recovery = YamlConfiguration.loadConfiguration(recoveryFile);
+        this.history = YamlConfiguration.loadConfiguration(historyFile);
     }
 
     public void enable() {
