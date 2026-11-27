@@ -731,7 +731,7 @@ public final class MobHuntGame implements Listener {
             if (player == null) continue;
             resetForRound(player);
             if (id.equals(active.hunter)) {
-                player.teleport(new Location(world, 0.5, world.getHighestBlockYAt(0, 0) + 1.0, 0.5));
+                player.teleport(new Location(world, 0.5, arenaBaseY + 1.0, 0.5));
                 player.setWalkSpeed(0.0f);
                 player.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, HUNTER_HIDE_SECONDS * 20, 0, false, false, true));
                 player.sendTitle(ChatColor.RED + "YOU ARE THE HUNTER",
@@ -979,7 +979,7 @@ public final class MobHuntGame implements Listener {
             return;
         }
         if (slot == 53) {
-            assignMob(active, player, MOB_TYPES.get(random.nextInt(MOB_TYPES.size())));
+            assignMob(active, player, randomEnabledMob());
             player.closeInventory();
             return;
         }
