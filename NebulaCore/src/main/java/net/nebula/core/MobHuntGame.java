@@ -701,7 +701,7 @@ public final class MobHuntGame implements Listener {
         active.hunter = candidates.get(random.nextInt(candidates.size()));
         active.hunterLocked = true;
         active.secondsLeft = configuredRoundSeconds();
-        active.hunterLives = HUNTER_LIVES;
+        active.hunterLives = configuredHunterLives();
         Player hunter = Bukkit.getPlayer(active.hunter);
         for (UUID id : candidates) {
             Player player = Bukkit.getPlayer(id);
@@ -753,7 +753,7 @@ public final class MobHuntGame implements Listener {
             if (match != active || active.roundEnded || active.ending) return;
             for (UUID pending : new ArrayList<>(active.mobPickPending)) {
                 Player hider = Bukkit.getPlayer(pending);
-                if (hider != null) assignMob(active, hider, MOB_TYPES.get(random.nextInt(MOB_TYPES.size())));
+                if (hider != null) assignMob(active, hider, randomEnabledMob());
             }
         }, configuredMobPickSeconds() * 20L);
         active.roundTask = new BukkitRunnable() {
@@ -1027,10 +1027,36 @@ public final class MobHuntGame implements Listener {
 
     private String abilityName(String mob) {
         return switch (mob) {
-            case "WARDEN" -> "Sonic Pulse"; case "CREEPER" -> "Creeper Burst"; case "GHAST" -> "Ghast Fireball";
-            case "BEE" -> "Sting"; case "SPIDER", "CAVE_SPIDER" -> "Web Dash";
-            case "SLIME", "MAGMA_CUBE", "FROG", "RABBIT" -> "Mega Jump";
-            case "WOLF", "FOX", "CAT" -> "Pounce"; default -> "Mob Strike";
+            case "PIG" -> "Snout Sprint"; case "COW" -> "Thick Hide"; case "SHEEP" -> "Woolly Guard";
+            case "CHICKEN" -> "Feather Fall"; case "WOLF" -> "Pack Dash"; case "CAT" -> "Silent Pounce";
+            case "FOX" -> "Quick Escape"; case "RABBIT" -> "Bunny Leap"; case "BAT" -> "Night Flight";
+            case "SPIDER" -> "Web Dash"; case "CAVE_SPIDER" -> "Venom Touch"; case "ENDERMAN" -> "Shadow Step";
+            case "CREEPER" -> "Creeper Burst"; case "ZOMBIE" -> "Rotting Aura"; case "SKELETON" -> "Bone Shot";
+            case "SLIME" -> "Mega Bounce"; case "MAGMA_CUBE" -> "Magma Bounce"; case "GHAST" -> "Ghast Fireball";
+            case "WARDEN" -> "Sonic Pulse"; case "GOAT" -> "Mountain Ram"; case "PANDA" -> "Rolling Knockback";
+            case "BEE" -> "Sting"; case "FROG" -> "Tonguebound Hop"; case "TURTLE" -> "Shell Guard";
+            case "AXOLOTL" -> "Regeneration"; case "CAMEL" -> "Desert Dash"; case "SNIFFER" -> "Ancient Senses";
+            default -> "Mob Strike";
+        };
+    }
+
+    private String abilityDescription(String mob) {
+        return switch (mob) {
+            case "PIG" -> "Burst of speed to escape"; case "COW" -> "Brief resistance against a hit";
+            case "SHEEP" -> "Short regeneration and a wool particle burst"; case "CHICKEN" -> "Slow falling and a high flutter jump";
+            case "WOLF" -> "Fast directional dash"; case "CAT" -> "Quiet jump with a short speed burst";
+            case "FOX" -> "Quick sideways escape"; case "RABBIT" -> "High leap to reach rooftops";
+            case "BAT" -> "Brief controlled flight"; case "SPIDER" -> "Fast web-style dash";
+            case "CAVE_SPIDER" -> "Slow the hunter at close range"; case "ENDERMAN" -> "Blink to a nearby safe location";
+            case "CREEPER" -> "A harmless pulse that pushes the hunter back"; case "ZOMBIE" -> "Disorient the nearby hunter";
+            case "SKELETON" -> "Fire a low-damage bone arrow"; case "SLIME" -> "Powerful bounce";
+            case "MAGMA_CUBE" -> "Bounce with brief fire resistance"; case "GHAST" -> "Launch a small non-incendiary fireball";
+            case "WARDEN" -> "Sonic pulse that pushes nearby hunter"; case "GOAT" -> "Charge forward and knock back";
+            case "PANDA" -> "Short rolling push"; case "BEE" -> "Sting to briefly slow the hunter";
+            case "FROG" -> "Long jump with a speed burst"; case "TURTLE" -> "Brief defensive resistance";
+            case "AXOLOTL" -> "Restore a little health over time"; case "CAMEL" -> "Fast straight-line dash";
+            case "SNIFFER" -> "Sense nearby danger with a short warning pulse";
+            default -> "A short mobility boost";
         };
     }
     private long abilityCooldown(String mob) {
@@ -1053,35 +1079,71 @@ public final class MobHuntGame implements Listener {
         if (now < readyAt) { player.sendMessage(PREFIX + ChatColor.RED + "Ability cooldown: " + ((readyAt - now + 999) / 1000) + "s."); openAbilityGui(player); return; }
         active.abilityReadyAt.put(id, now + configuredAbilityCooldown(mob));
         Player hunter = Bukkit.getPlayer(active.hunter);
+        if (!isMobEnabled(mob)) { player.sendMessage(PREFIX + ChatColor.RED + "That mob's ability is disabled by an admin."); return; }
+        boolean hunterNearby = hunter != null && hunter.isOnline() && hunter.getWorld().equals(world)
+                && hunter.getLocation().distanceSquared(player.getLocation()) <= 100;
         switch (mob) {
-            case "WARDEN" -> {
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 100) {
-                    hunter.damage(6.0, player);
-                    hunter.setVelocity(hunter.getLocation().toVector().subtract(player.getLocation().toVector()).normalize().multiply(0.8));
-                }
-                player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_WARDEN_SONIC_BOOM, 1f, 1f);
+            case "PIG" -> player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2));
+            case "COW" -> player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 80, 1));
+            case "SHEEP" -> player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 80, 1));
+            case "CHICKEN" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 100, 0)); player.setVelocity(player.getVelocity().setY(0.75)); }
+            case "WOLF" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2)); player.setVelocity(player.getLocation().getDirection().multiply(1.0).setY(0.25)); }
+            case "CAT" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 100, 2)); player.setVelocity(player.getLocation().getDirection().multiply(0.7).setY(0.65)); }
+            case "FOX" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 2)); player.setVelocity(player.getLocation().getDirection().multiply(-0.7).setY(0.45)); }
+            case "RABBIT" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 100, 3)); player.setVelocity(player.getLocation().getDirection().multiply(0.5).setY(1.0)); }
+            case "BAT" -> {
+                player.setAllowFlight(true); player.setFlying(true); player.setFlySpeed(0.08f);
+                Bukkit.getScheduler().runTaskLater(plugin, () -> { if (player.isOnline() && !player.getUniqueId().equals(active.hunter)) player.setFlying(false); }, 80L);
+            }
+            case "SPIDER" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 2)); player.setVelocity(player.getLocation().getDirection().multiply(1.0).setY(0.4)); }
+            case "CAVE_SPIDER" -> { if (hunterNearby) hunter.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 1)); player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 1)); }
+            case "ENDERMAN" -> {
+                Location from = player.getLocation();
+                Location to = from.clone().add(from.getDirection().normalize().multiply(7));
+                int y = world.getHighestBlockYAt(to.getBlockX(), to.getBlockZ()) + 1;
+                to.setY(y); if (y < arenaBaseY + 16) player.teleport(to);
+                player.getWorld().spawnParticle(Particle.PORTAL, from.add(0, 1, 0), 35, 0.5, 0.8, 0.5, 0.2);
             }
             case "CREEPER" -> {
-                player.getWorld().createExplosion(player.getLocation(), 0f, false, false);
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 25) hunter.damage(5.0, player);
-            }
-            case "GHAST" -> { Fireball fireball = player.launchProjectile(Fireball.class); fireball.setIsIncendiary(false); fireball.setYield(0f); }
-            case "BEE" -> {
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 16) {
-                    hunter.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 60, 0)); hunter.damage(2.0, player);
+                player.getWorld().spawnParticle(Particle.EXPLOSION, player.getLocation(), 1);
+                if (hunterNearby && hunter.getLocation().distanceSquared(player.getLocation()) <= 25) {
+                    hunter.setVelocity(hunter.getLocation().toVector().subtract(player.getLocation().toVector()).normalize().multiply(1.0).setY(0.4));
                 }
+                player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_CREEPER_PRIMED, 0.8f, 1.4f);
             }
-            case "SPIDER", "CAVE_SPIDER" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 2)); player.setVelocity(player.getLocation().getDirection().multiply(1.1).setY(0.35)); }
-            case "SLIME", "MAGMA_CUBE", "FROG", "RABBIT" -> {
-                player.setVelocity(player.getLocation().getDirection().multiply(0.8).setY(0.9));
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player);
+            case "ZOMBIE" -> { if (hunterNearby && hunter.getLocation().distanceSquared(player.getLocation()) <= 36) hunter.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 50, 0)); }
+            case "SKELETON" -> {
+                Arrow arrow = player.launchProjectile(Arrow.class);
+                arrow.setDamage(2.0);
             }
-            case "WOLF", "FOX", "CAT" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2));
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player);
+            case "SLIME" -> { player.setVelocity(player.getLocation().getDirection().multiply(0.6).setY(0.95)); player.getWorld().spawnParticle(Particle.SLIME, player.getLocation(), 24, 0.6, 0.2, 0.6, 0.1); }
+            case "MAGMA_CUBE" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 100, 0)); player.setVelocity(player.getLocation().getDirection().multiply(0.6).setY(0.85)); }
+            case "GHAST" -> { Fireball fireball = player.launchProjectile(Fireball.class); fireball.setIsIncendiary(false); fireball.setYield(0f); }
+            case "WARDEN" -> {
+                if (hunterNearby) { hunter.setVelocity(hunter.getLocation().toVector().subtract(player.getLocation().toVector()).normalize().multiply(1.1).setY(0.4)); hunter.damage(2.0, player); }
+                player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_WARDEN_SONIC_BOOM, 1f, 1f);
+                player.getWorld().spawnParticle(Particle.SONIC_BOOM, player.getLocation(), 1);
             }
-            default -> { if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player); player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 1)); }
+            case "GOAT" -> { player.setVelocity(player.getLocation().getDirection().multiply(1.5).setY(0.25)); if (hunterNearby && hunter.getLocation().distanceSquared(player.getLocation()) <= 16) hunter.setVelocity(hunter.getLocation().getDirection().multiply(-0.8).setY(0.3)); }
+            case "PANDA" -> { if (hunterNearby && hunter.getLocation().distanceSquared(player.getLocation()) <= 25) hunter.setVelocity(hunter.getLocation().toVector().subtract(player.getLocation().toVector()).normalize().multiply(1.0).setY(0.3)); player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 30, 0)); }
+            case "BEE" -> {
+                if (hunterNearby && hunter.getLocation().distanceSquared(player.getLocation()) <= 16) hunter.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 1));
+                player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation(), 12, 0.4, 0.4, 0.4, 0.05);
+            }
+            case "FROG" -> { player.setVelocity(player.getLocation().getDirection().multiply(0.9).setY(0.9)); player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_FROG_TONGUE, 0.8f, 1.3f); }
+            case "TURTLE" -> player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 100, 2));
+            case "AXOLOTL" -> player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 120, 1));
+            case "CAMEL" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 120, 1)); player.setVelocity(player.getLocation().getDirection().multiply(1.4).setY(0.15)); }
+            case "SNIFFER" -> {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 160, 0));
+                player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation(), 18, 0.8, 0.5, 0.8, 0.05);
+                if (hunterNearby && hunter.getLocation().distanceSquared(player.getLocation()) <= 64) player.sendMessage(PREFIX + ChatColor.AQUA + "You sense the hunter nearby!");
+            }
+            default -> player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 1));
         }
+        player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
+        player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.7f, 1.5f);
+    }
         player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
     }
     @EventHandler
@@ -1451,6 +1513,7 @@ public final class MobHuntGame implements Listener {
         world.setGameRule(GameRule.DO_WEATHER_CYCLE, false);
         world.setGameRule(GameRule.DO_MOB_SPAWNING, false);
         world.setGameRule(GameRule.KEEP_INVENTORY, true);
+        world.setGameRule(GameRule.DO_IMMEDIATE_RESPAWN, true);
         int base = 80;
         arenaBaseY = base;
         for (int x = -48; x <= 48; x++) {
