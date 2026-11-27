@@ -929,20 +929,39 @@ public final class MobHuntGame implements Listener {
     }
 
     private void applyMobAbility(Player player, String mob) {
+        int duration = configuredRoundSeconds() * 20;
         switch (mob) {
-            case "GHAST", "BAT", "BEE" -> {
+            case "PIG" -> player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, duration, 0, false, false, true));
+            case "COW" -> player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, duration, 0, false, false, true));
+            case "SHEEP" -> player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, duration, 0, false, false, true));
+            case "CHICKEN" -> player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, duration, 0, false, false, true));
+            case "WOLF" -> player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, duration, 1, false, false, true));
+            case "CAT" -> player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, duration, 1, false, false, true));
+            case "FOX" -> player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, duration, 0, false, false, true));
+            case "RABBIT" -> player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, duration, 2, false, false, true));
+            case "BAT", "GHAST", "BEE" -> {
                 player.setAllowFlight(true);
                 player.setFlying(true);
                 player.setFlySpeed(0.08f);
             }
-            case "RABBIT", "FROG", "SLIME", "MAGMA_CUBE" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, configuredRoundSeconds() * 20, 1, false, false, true));
-            case "WOLF", "FOX", "CAT" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, configuredRoundSeconds() * 20, 1, false, false, true));
-            case "TURTLE", "AXOLOTL" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, configuredRoundSeconds() * 20, 0, false, false, true));
-            case "WARDEN" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, configuredRoundSeconds() * 20, 0, false, false, true));
+            case "SPIDER" -> player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, duration, 1, false, false, true));
+            case "CAVE_SPIDER" -> player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, duration, 0, false, false, true));
+            case "ENDERMAN" -> player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, duration, 0, false, false, true));
+            case "CREEPER" -> player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, duration, 0, false, false, true));
+            case "ZOMBIE" -> player.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, duration, 0, false, false, true));
+            case "SKELETON" -> player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, duration, 0, false, false, true));
+            case "SLIME", "FROG" -> player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, duration, 2, false, false, true));
+            case "MAGMA_CUBE" -> player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, duration, 0, false, false, true));
+            case "WARDEN" -> player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, duration, 0, false, false, true));
+            case "GOAT" -> player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, duration, 1, false, false, true));
+            case "PANDA" -> player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, duration, 0, false, false, true));
+            case "TURTLE" -> player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, duration, 0, false, false, true));
+            case "AXOLOTL" -> {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, duration, 0, false, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, duration, 0, false, false, true));
+            }
+            case "CAMEL" -> player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, duration, 0, false, false, true));
+            case "SNIFFER" -> player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, duration, 0, false, false, true));
             default -> { }
         }
     }
