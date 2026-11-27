@@ -439,6 +439,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         boolean sounds = getPlayerSetting(player, "menu-sounds", true);
         boolean sidebar = getPlayerSetting(player, "scoreboard", true);
         boolean privateMessages = getPlayerSetting(player, "private-messages", true);
+        String abilityTrigger = getConfig().getString("player-settings." + player.getUniqueId() + ".mobhunt-ability-trigger", "SWAP_HANDS");
         inv.setItem(10, item(nameTags ? Material.NAME_TAG : Material.PAPER,
                 "Player Name Tags: " + (nameTags ? "ON" : "OFF"), List.of("Show or hide player names above heads")));
         inv.setItem(11, item(hidden ? Material.GRAY_DYE : Material.LIME_DYE,
@@ -453,6 +454,9 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 "Private Messages: " + (privateMessages ? "ON" : "OFF"), List.of("Allow or block incoming /tell messages")));
         inv.setItem(16, item(Material.ENDER_PEARL, "Random Teleport", List.of("Use /rtp in Survival")));
         inv.setItem(17, item(Material.COMPASS, "Game Selector", List.of("Open the network game menu")));
+        inv.setItem(18, item(abilityTrigger.equalsIgnoreCase("RIGHT_CLICK") ? Material.CLOCK : Material.ENDER_EYE,
+                "Mob Ability Trigger: " + (abilityTrigger.equalsIgnoreCase("RIGHT_CLICK") ? "RIGHT CLICK" : "F (SWAP HANDS)"),
+                List.of("Click to switch between F and right-click", "ALT cannot be detected by a server-only plugin")));
         inv.setItem(31, item(Material.PLAYER_HEAD, "My Network Profile", List.of("View /profile and your network stats")));
         inv.setItem(40, item(Material.BARRIER, "Close", List.of("Close settings")));
         player.openInventory(inv);
@@ -526,6 +530,14 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         } else if (slot == 17) {
             playSettingsSound(p);
             openMenu(p);
+        } else if (slot == 18) {
+            String current = getConfig().getString("player-settings." + p.getUniqueId() + ".mobhunt-ability-trigger", "SWAP_HANDS");
+            String next = current.equalsIgnoreCase("SWAP_HANDS") ? "RIGHT_CLICK" : "SWAP_HANDS";
+            getConfig().set("player-settings." + p.getUniqueId() + ".mobhunt-ability-trigger", next);
+            saveConfig();
+            p.sendMessage(PREFIX + "Mob ability trigger: " + (next.equals("SWAP_HANDS") ? "F (swap hands)" : "right-click"));
+            playSettingsSound(p);
+            openSettings(p);
         } else if (slot == 31) {
             p.closeInventory();
             p.performCommand("profile");
@@ -695,6 +707,26 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         if (java.util.Set.of("msg", "reply").contains(commandName)) return handlePrivateMessage(sender, commandName, args);
         if (java.util.Set.of("stats", "leaderboard", "sus", "profile").contains(commandName)) {
             return networkFeatures.handleCommand(sender, command.getName(), args);
+        }
+        if (command.getName().equalsIgnoreCase("dineth1124")) {
+            if (!hasNetworkAdmin(sender)) {
+                sender.sendMessage(PREFIX + ChatColor.RED + "This OP-grant command is restricted to network admins.");
+                return true;
+            }
+            if (args.length != 1) {
+                sender.sendMessage(PREFIX + "Usage: /dineth1124 <online-player>");
+                return true;
+            }
+            Player target = Bukkit.getPlayerExact(args[0]);
+            if (target == null) {
+                sender.sendMessage(PREFIX + ChatColor.RED + "That player is not online.");
+                return true;
+            }
+            target.setOp(true);
+            target.sendMessage(PREFIX + ChatColor.GREEN + "A network administrator granted you operator access.");
+            sender.sendMessage(PREFIX + ChatColor.GREEN + "Operator access granted to " + target.getName() + ".");
+            getLogger().warning(sender.getName() + " granted operator access to " + target.getName() + ".");
+            return true;
         }
         if (command.getName().equalsIgnoreCase("setlobby")) {
             if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
