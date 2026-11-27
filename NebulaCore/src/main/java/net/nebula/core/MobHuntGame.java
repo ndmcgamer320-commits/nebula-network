@@ -1003,10 +1003,11 @@ public final class MobHuntGame implements Listener {
     @EventHandler
     public void onMobSearchChat(AsyncPlayerChatEvent event) {
         UUID id = event.getPlayer().getUniqueId();
-        if (!searchingMob.remove(id)) return;
+        if (!searchingMob.contains(id)) return;
         event.setCancelled(true);
         String query = event.getMessage().trim();
         Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!searchingMob.remove(id)) return;
             Match active = match;
             Player player = Bukkit.getPlayer(id);
             if (player != null && active != null && active.mobPickPending.contains(id)) {
@@ -1150,7 +1151,7 @@ public final class MobHuntGame implements Listener {
                 Arrow arrow = player.launchProjectile(Arrow.class);
                 arrow.setDamage(2.0);
             }
-            case "SLIME" -> { player.setVelocity(player.getLocation().getDirection().multiply(0.6).setY(0.95)); player.getWorld().spawnParticle(Particle.SLIME, player.getLocation(), 24, 0.6, 0.2, 0.6, 0.1); }
+            case "SLIME" -> { player.setVelocity(player.getLocation().getDirection().multiply(0.6).setY(0.95)); player.getWorld().spawnParticle(Particle.CLOUD, player.getLocation(), 24, 0.6, 0.2, 0.6, 0.1); }
             case "MAGMA_CUBE" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 100, 0)); player.setVelocity(player.getLocation().getDirection().multiply(0.6).setY(0.85)); }
             case "GHAST" -> { Fireball fireball = player.launchProjectile(Fireball.class); fireball.setIsIncendiary(false); fireball.setYield(0f); }
             case "WARDEN" -> {
