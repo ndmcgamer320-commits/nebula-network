@@ -69,19 +69,22 @@ public final class NebulaNetworkFeatures implements Listener {
     }
 
     private void flag(Player player, String reason) {
-        UUID id = player.getUniqueId();
-        touch(player);
-        String base = path(id);
-        data.set(base + ".flags", number(id, "flags", 0) + 1);
-        data.set(base + ".lastFlag", reason + " @ " + new Date());
-        save();
-        for (Player staff : Bukkit.getOnlinePlayers()) {
-            if (staff.hasPermission("nebulacore.admin")) {
-                staff.sendMessage(PREFIX + ChatColor.RED + "Activity flag: " + ChatColor.WHITE
-                        + player.getName() + ChatColor.GRAY + " (" + reason + ")");
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()) return;
+            UUID id = player.getUniqueId();
+            touch(player);
+            String base = path(id);
+            data.set(base + ".flags", number(id, "flags", 0) + 1);
+            data.set(base + ".lastFlag", reason + " @ " + new Date());
+            save();
+            for (Player staff : Bukkit.getOnlinePlayers()) {
+                if (staff.hasPermission("nebulacore.admin")) {
+                    staff.sendMessage(PREFIX + ChatColor.RED + "Activity flag: " + ChatColor.WHITE
+                            + player.getName() + ChatColor.GRAY + " (" + reason + ")");
+                }
             }
-        }
-        plugin.getLogger().warning("Activity flag for " + player.getName() + ": " + reason);
+            plugin.getLogger().warning("Activity flag for " + player.getName() + ": " + reason);
+        });
     }
 
     @EventHandler
