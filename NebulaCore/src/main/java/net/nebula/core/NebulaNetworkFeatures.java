@@ -30,6 +30,7 @@ public final class NebulaNetworkFeatures implements Listener {
     private final Map<UUID, Deque<Long>> chatTimes = new ConcurrentHashMap<>();
     private final Map<UUID, Deque<Long>> commandTimes = new ConcurrentHashMap<>();
     private final Map<UUID, Long> mutedUntil = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> reportCooldowns = new ConcurrentHashMap<>();
 
     public NebulaNetworkFeatures(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -158,6 +159,80 @@ public final class NebulaNetworkFeatures implements Listener {
     }
 
     public boolean handleCommand(CommandSender sender, String command, String[] args) {
+        if (command.equalsIgnoreCase("ping")) {
+            Player target = args.length == 0 ? (sender instanceof Player p ? p : null)
+                    : (isAdmin(sender) ? Bukkit.getPlayerExact(args[0]) : null);
+            if (target == null) {
+                sender.sendMessage(PREFIX + (args.length == 0 ? "Players only." : "You can only inspect another player's ping as staff."));
+                return true;
+            }
+            sender.sendMessage(PREFIX + target.getName() + "'s ping: " + ChatColor.AQUA + target.getPing() + "ms");
+            return true;
+        }
+        if (command.equalsIgnoreCase("report")) {
+            if (args.length == 1 && args[0].equalsIgnoreCase("list")) {
+                if (!isAdmin(sender)) { sender.sendMessage(PREFIX + ChatColor.RED + "Admin permission required."); return true; }
+                var reports = data.getConfigurationSection("reports");
+                if (reports == null || reports.getKeys(false).isEmpty()) {
+                    sender.sendMessage(PREFIX + "There are no saved reports.");
+                    return true;
+                }
+                sender.sendMessage(ChatColor.RED + "" + ChatColor.BOLD + "✦ OPEN PLAYER REPORTS ✦");
+                int shown = 0;
+                for (String id : reports.getKeys(false)) {
+                    if (!data.getString("reports." + id + ".status", "OPEN").equals("OPEN")) continue;
+                    sender.sendMessage(ChatColor.YELLOW + "#" + id + ChatColor.GRAY + " "
+                            + data.getString("reports." + id + ".reporter", "?") + " → "
+                            + data.getString("reports." + id + ".target", "?") + ": "
+                            + data.getString("reports." + id + ".reason", "No reason"));
+                    shown++;
+                }
+                if (shown == 0) sender.sendMessage(ChatColor.GRAY + "No open reports.");
+                return true;
+            }
+            if (args.length == 2 && args[0].equalsIgnoreCase("close")) {
+                if (!isAdmin(sender)) { sender.sendMessage(PREFIX + ChatColor.RED + "Admin permission required."); return true; }
+                String id = args[1];
+                if (!data.contains("reports." + id)) { sender.sendMessage(PREFIX + "Report not found."); return true; }
+                data.set("reports." + id + ".status", "CLOSED");
+                data.set("reports." + id + ".closedBy", sender.getName());
+                save();
+                sender.sendMessage(PREFIX + ChatColor.GREEN + "Report #" + id + " closed.");
+                return true;
+            }
+            if (!(sender instanceof Player reporter)) { sender.sendMessage("Players only."); return true; }
+            if (args.length < 2) { sender.sendMessage(PREFIX + "Usage: /report <player> <reason> | /report list | /report close <id>"); return true; }
+            long now = System.currentTimeMillis();
+            long readyAt = reportCooldowns.getOrDefault(reporter.getUniqueId(), 0L);
+            if (now < readyAt) {
+                sender.sendMessage(PREFIX + ChatColor.RED + "Please wait " + ((readyAt - now + 999) / 1000) + "s before submitting another report.");
+                return true;
+            }
+            Player target = Bukkit.getPlayerExact(args[0]);
+            if (target == null) { sender.sendMessage(PREFIX + "That player must be online to report."); return true; }
+            if (target.equals(reporter)) { sender.sendMessage(PREFIX + "You cannot report yourself."); return true; }
+            String reason = String.join(" ", Arrays.copyOfRange(args, 1, args.length)).trim();
+            if (reason.length() < 5 || reason.length() > 120) {
+                sender.sendMessage(PREFIX + "Please provide a reason between 5 and 120 characters.");
+                return true;
+            }
+            String id = Long.toString(now);
+            data.set("reports." + id + ".reporter", reporter.getName());
+            data.set("reports." + id + ".target", target.getName());
+            data.set("reports." + id + ".reason", reason);
+            data.set("reports." + id + ".status", "OPEN");
+            data.set("reports." + id + ".createdAt", new Date().toString());
+            save();
+            reportCooldowns.put(reporter.getUniqueId(), now + 30000L);
+            reporter.sendMessage(PREFIX + ChatColor.GREEN + "Report submitted. Staff will review it.");
+            for (Player staff : Bukkit.getOnlinePlayers()) {
+                if (staff.hasPermission("nebulacore.admin")) {
+                    staff.sendMessage(PREFIX + ChatColor.RED + "New report #" + id + ": "
+                            + reporter.getName() + " reported " + target.getName() + " — " + reason);
+                }
+            }
+            return true;
+        }
         if (command.equalsIgnoreCase("profile")) {
             if (args.length > 0 && !isAdmin(sender) && (!(sender instanceof Player p) || !p.getName().equalsIgnoreCase(args[0]))) {
                 sender.sendMessage(PREFIX + ChatColor.RED + "You can only view your own profile.");
