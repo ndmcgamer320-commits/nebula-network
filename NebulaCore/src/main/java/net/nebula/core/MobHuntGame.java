@@ -732,19 +732,20 @@ public final class MobHuntGame implements Listener {
 
     private String abilityName(String mob) {
         return switch (mob) {
-            case "WARDEN" -> "Sonic Pulse"; case "CREEPER" -> "Creeper Burst"; case "GHAST" -> "Ghast Fireball";
-            case "BEE" -> "Sting"; case "SPIDER", "CAVE_SPIDER" -> "Web Dash";
-            case "SLIME", "MAGMA_CUBE", "FROG", "RABBIT" -> "Mega Jump";
-            case "WOLF", "FOX", "CAT" -> "Pounce";
-            case "VILLAGER", "ALLAY" -> "Emerald Escape";
-            case "IRON_GOLEM" -> "Iron Slam";
-            case "HORSE", "DONKEY", "MULE", "LLAMA" -> "Stampede";
-            case "BLAZE" -> "Flame Burst";
-            default -> "Mob Strike";
+            case "WARDEN" -> "Sonic Boom";
+            case "CREEPER" -> "Creeper Explosion";
+            case "GHAST" -> "Fireball";
+            case "BEE" -> "Sting";
+            case "BLAZE" -> "Fireball";
+            default -> "No active ability (vanilla trait only)";
         };
     }
     private long abilityCooldown(String mob) {
-        return switch (mob) { case "WARDEN", "GHAST", "CREEPER", "IRON_GOLEM" -> 15000L; case "BEE", "SPIDER", "CAVE_SPIDER", "BLAZE" -> 10000L; default -> 8000L; };
+        return switch (mob) {
+            case "WARDEN", "GHAST", "CREEPER" -> 15000L;
+            case "BEE", "BLAZE" -> 10000L;
+            default -> 0L;
+        };
     }
     private void incrementStat(UUID id, String key, int amount) {
         String path = "players." + id;
@@ -859,7 +860,7 @@ public final class MobHuntGame implements Listener {
     private void openPracticeGuide(Player player) {
         Inventory inv = Bukkit.createInventory(null, 27, ChatColor.DARK_PURPLE + "Mob Hunt Practice");
         inv.setItem(11, named(Material.SPAWNER, ChatColor.GREEN + "Ability Training", "Use /mobhunt join to enter a live test match.", "Abilities are available to hiders during a round.", "Use /mobhunt settings to customize effects."));
-        inv.setItem(15, named(Material.BOOK, ChatColor.AQUA + "Ability Guide", "Spider: automatic wall climb • Warden: sonic pulse", "Iron Golem: slam • Fox: pounce • Bee: sting", "Blaze: flame burst • Villager: escape dash"));
+        inv.setItem(15, named(Material.BOOK, ChatColor.AQUA + "Vanilla Mob Traits", "Wither Skeleton: hits apply Wither", "Bee: flight and poison sting • Cave Spider: poison", "Spider: wall climbing • Stray: slowness on hit", "Husk: hunger on hit • Shulker: levitation on hit", "Villager: no special power"));
         player.openInventory(inv);
     }
 
@@ -929,7 +930,8 @@ public final class MobHuntGame implements Listener {
             case "GHAST" -> { Fireball fireball = player.launchProjectile(Fireball.class); fireball.setIsIncendiary(false); fireball.setYield(0f); }
             case "BEE" -> {
                 if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 16) {
-                    hunter.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 60, 0)); hunter.damage(2.0, player);
+                    hunter.addPotionEffect(new PotionEffect(PotionEffectType.POISON, 80, 0, true, true, true));
+                    hunter.damage(2.0, player);
                 }
             }
             case "BLAZE" -> {
