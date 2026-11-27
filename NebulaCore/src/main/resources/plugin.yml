@@ -42,6 +42,17 @@ commands:
   arenareset:
     description: Regenerate the BedWars and Duel maps.
     usage: /arenareset [bedwars|duel|all]
+  profile:
+    description: View your network player profile.
+    usage: /profile [player]
+  msg:
+    description: Send a private message.
+    usage: /tell <player> <message>
+    aliases: [tell, w]
+  reply:
+    description: Reply to your last private message.
+    usage: /r <message>
+    aliases: [r]
   stats:
     description: View player network statistics.
     usage: /stats [player]
