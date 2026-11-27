@@ -23,7 +23,7 @@
 - Arena maps regenerate on server startup and when the last player leaves an arena
 - `/bedwars` and `/duel` enter the map previews; `/arenareset [bedwars|duel|all]` manually restores a map (operator or OWNER/ADMIN rank)
 
-**Testing status:** The project compiles, but the live server, map download, NPC skin fetch, and multiplayer flows still need a real server session to verify. Lucky Pillars remains a placeholder.
+**Testing status:** GitHub Actions build validation is required after each change. Live multiplayer behavior, server-list icon rendering, map download, NPC skin fetch, and message/settings flows still need a real server session to verify. Lucky Pillars remains a placeholder.
 
 ## One-time setup
 
@@ -37,7 +37,7 @@
 
 The public address is shown by the Playit agent logs. Share that address with Java Edition players.
 
-## Commands
+## Network features\n\n- Branded server-list MOTD and `server-icon.png` Nebula emblem.\n- Expanded `/settings` menu: name tags, player visibility, lobby particles, menu sounds, sidebar and private-message preferences.\n- `/tell`, `/msg`, `/w`, `/r` and `/reply` private messaging.\n- `/profile` player card with network rank, overall ELO, mode ELO, kills, deaths and ping.\n- Separate ELO counters are tracked for Survival, Duels and BedWars when player kills occur in those worlds; other game modes need their own match-result integration before competitive ELO can be considered complete.\n\n## Commands
 
 | Command | Purpose |
 | --- | --- |
@@ -45,7 +45,7 @@ The public address is shown by the Playit agent logs. Share that address with Ja
 | `/menu` | Open game selector |
 | `/nebula` | Open game selector |
 | `/setlobby` | Save current location as lobby (operator or OWNER/ADMIN rank) |
-| `/settings` | Open personal lobby settings |
+| `/settings` | Open personal lobby settings |\n| `/tell <player> <message>` / `/msg` / `/w` | Send a private message |\n| `/r <message>` / `/reply` | Reply to your last private message |\n| `/profile [player]` | View a network profile (other players: staff only) |
 | `/rank` | View your network rank |
 | `/rank <player> <OWNER\|ADMIN\|MVP\|VIP\|MEMBER>` | Set an online player's network rank (console, OWNER or ADMIN) |
 | `/bedwars` | Enter the BedWars map preview |
