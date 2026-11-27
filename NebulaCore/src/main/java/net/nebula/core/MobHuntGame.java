@@ -343,7 +343,8 @@ public final class MobHuntGame implements Listener {
         viewer.sendMessage(ChatColor.GRAY + "Matches: " + ChatColor.WHITE + plugin.getConfig().getInt(path + ".matches", 0)
                 + ChatColor.GRAY + " • Wins: " + ChatColor.GREEN + plugin.getConfig().getInt(path + ".wins", 0));
         viewer.sendMessage(ChatColor.GRAY + "Kills: " + ChatColor.WHITE + plugin.getConfig().getInt(path + ".kills", 0)
-                + ChatColor.GRAY + " • Survival: " + ChatColor.AQUA + plugin.getConfig().getInt(path + ".survival-seconds", 0) + "s");
+                + ChatColor.GRAY + " • Survival: " + ChatColor.AQUA + plugin.getConfig().getInt(path + ".survival-seconds", 0) + "s"
+                + ChatColor.GRAY + " • Best: " + ChatColor.AQUA + plugin.getConfig().getInt(path + ".best-survival-seconds", 0) + "s");
         viewer.sendMessage(ChatColor.GRAY + "Best points: " + ChatColor.GOLD + plugin.getConfig().getInt(path + ".best-points", 0)
                 + ChatColor.GRAY + " • Favorite mob: " + ChatColor.LIGHT_PURPLE + plugin.getConfig().getString(path + ".favorite-mob", "N/A"));
     }
@@ -822,6 +823,7 @@ public final class MobHuntGame implements Listener {
                 active.secondsLeft--;
             }
         }.runTaskTimer(plugin, 20L, 20L);
+        logMatch("ROUND_START", active, "hunter=" + nameOf(active.hunter) + ", seconds=" + active.secondsLeft + ", lives=" + active.hunterLives);
         broadcastToMatch(active, ChatColor.LIGHT_PURPLE + "Round " + active.round + "/" + ROUNDS
                 + " • A random player is the hunter this round.");
     }
@@ -1122,7 +1124,8 @@ public final class MobHuntGame implements Listener {
         String mob = active.mobForms.getOrDefault(player.getUniqueId(), "PIG");
         long remain = Math.max(0L, active.abilityReadyAt.getOrDefault(player.getUniqueId(), 0L) - System.currentTimeMillis());
         Inventory inv = Bukkit.createInventory(null, 27, ABILITY_TITLE);
-        inv.setItem(11, named(Material.NETHER_STAR, ChatColor.GREEN + "Use " + abilityName(mob), "Mob: " + pretty(mob), remain == 0 ? "Ready now!" : "Cooldown: " + (remain / 1000.0) + "s"));
+        inv.setItem(11, named(Material.NETHER_STAR, ChatColor.GREEN + "Use " + abilityName(mob), "Mob: " + pretty(mob),
+                abilityDescription(mob), remain == 0 ? "Ready now!" : "Cooldown: " + ((remain + 999) / 1000L) + "s"));
         inv.setItem(15, named(Material.CLOCK, ChatColor.AQUA + "Cooldown Status", remain == 0 ? "Ability ready" : "Available in " + (remain / 1000.0) + " seconds"));
         player.openInventory(inv);
     }
@@ -1196,6 +1199,7 @@ public final class MobHuntGame implements Listener {
             default -> player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 1));
         }
         player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
+        logMatch("ABILITY", active, "player=" + player.getName() + ", mob=" + mob + ", ability=" + abilityName(mob));
         player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.7f, 1.5f);
     }
     @EventHandler
@@ -1234,6 +1238,7 @@ public final class MobHuntGame implements Listener {
     private void endRound(Match active, boolean hunterWon) {
         if (match != active || active.roundEnded || active.ending) return;
         active.roundEnded = true;
+        logMatch("ROUND_END", active, "hunterWon=" + hunterWon + ", survivors=" + active.aliveHiders);
         active.cancelRoundTasks();
         if (hunterWon) {
             active.scores.merge(active.hunter, 1, Integer::sum);
@@ -1277,7 +1282,10 @@ public final class MobHuntGame implements Listener {
             plugin.getConfig().set(path + ".points", plugin.getConfig().getInt(path + ".points", 0) + points);
             plugin.getConfig().set(path + ".best-points", Math.max(points, plugin.getConfig().getInt(path + ".best-points", 0)));
             plugin.getConfig().set(path + ".kills", plugin.getConfig().getInt(path + ".kills", 0) + active.kills.getOrDefault(id, 0));
-            plugin.getConfig().set(path + ".survival-seconds", plugin.getConfig().getInt(path + ".survival-seconds", 0) + active.survivalSeconds.getOrDefault(id, 0));
+            int survival = active.survivalSeconds.getOrDefault(id, 0);
+            plugin.getConfig().set(path + ".survival-seconds", plugin.getConfig().getInt(path + ".survival-seconds", 0) + survival);
+            plugin.getConfig().set(path + ".best-survival-seconds", Math.max(survival,
+                    plugin.getConfig().getInt(path + ".best-survival-seconds", 0)));
             if (winners.contains(id)) plugin.getConfig().set(path + ".wins", plugin.getConfig().getInt(path + ".wins", 0) + 1);
             ConfigurationSection mobUses = plugin.getConfig().getConfigurationSection(path + ".mob-uses");
             if (mobUses != null && !mobUses.getKeys(false).isEmpty()) {
