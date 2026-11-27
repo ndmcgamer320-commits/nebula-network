@@ -1053,7 +1053,7 @@ public final class MobHuntGame implements Listener {
             } else if (hider.isFlying()) hider.setFlySpeed(0.08f);
             if (hider.getLocation().getY() < arenaBaseY - CAMP_LOW_LIMIT) {
                 Location safe = hider.getLocation().clone();
-                safe.setY(world.getHighestBlockYAt(safe.getBlockX(), safe.getBlockZ()) + 1.0);
+                safe.setY(arenaBaseY + 1.0);
                 hider.teleport(safe);
                 hider.sendMessage(PREFIX + ChatColor.RED + "Anti-camping: underground hiding is disabled.");
             } else if (hider.getLocation().getY() > arenaBaseY + CAMP_HIGH_LIMIT && hunter != null) {
@@ -1228,11 +1228,12 @@ public final class MobHuntGame implements Listener {
         for (UUID id : active.aliveHiders) {
             Player hider = Bukkit.getPlayer(id);
             if (hider == null || !hider.isOnline() || !hider.getWorld().equals(world)) continue;
+            if (hider.isSneaking()) continue;
             double d = hunter.getLocation().distanceSquared(hider.getLocation());
             if (d < distance) { distance = d; nearest = hider; }
         }
-        if (nearest != null && !nearest.isSneaking()) hunter.setCompassTarget(nearest.getLocation());
-        else if (nearest != null) hunter.sendActionBar(ChatColor.AQUA + "A hider is moving quietly...");
+        if (nearest != null) hunter.setCompassTarget(nearest.getLocation());
+        else hunter.sendActionBar(ChatColor.AQUA + "Hiders are moving quietly or out of tracking range...");
     }
 
     private void endRound(Match active, boolean hunterWon) {
@@ -1345,7 +1346,7 @@ public final class MobHuntGame implements Listener {
     private Location randomVillageSpawn() {
         int[][] spots = "castle".equals(currentMap)
                 ? new int[][]{{-28,-28},{28,-28},{-28,28},{28,28},{0,-30},{30,0},{0,30},{-30,0},{-14,0},{14,0},{0,-14},{0,14}}
-                : new int[][]{{-10,-28},{10,28},{-28,10},{28,-10},{0,-30},{30,0},{0,30},{-30,0},{-12,0},{12,0},{0,-12},{0,12}};
+                : new int[][]{{-10,-28},{10,28},{-28,10},{28,-10},{0,-30},{24,0},{0,30},{-24,0},{-12,0},{12,0},{0,-12},{0,12}};
         int[] spot = spots[random.nextInt(spots.length)];
         return new Location(world, spot[0] + 0.5, arenaBaseY + 1.0, spot[1] + 0.5);
     }
