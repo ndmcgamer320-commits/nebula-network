@@ -79,6 +79,7 @@ import java.util.stream.Collectors;
  */
 public final class MobHuntGame implements Listener {
     private static final String WORLD_NAME = "mob_hunt";
+    private static final String PRACTICE_WORLD_NAME = "mob_hunt_practice";
     private static final String MENU_TITLE = ChatColor.DARK_PURPLE + "Mob Hunt";
     private static final String PICK_TITLE = ChatColor.DARK_PURPLE + "Choose 2 Hunt Tools";
     private static final String PREFIX = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD
@@ -104,7 +105,7 @@ public final class MobHuntGame implements Listener {
             "CREEPER", "ZOMBIE", "HUSK", "DROWNED", "SKELETON", "STRAY", "SLIME",
             "MAGMA_CUBE", "GHAST", "WARDEN", "GOAT", "PANDA", "BEE", "FROG", "TURTLE",
             "AXOLOTL", "CAMEL", "SNIFFER", "ALLAY", "ARMADILLO", "BLAZE", "PHANTOM",
-            "SILVERFISH", "ENDERMITE", "PILLAGER", "VINDICATOR", "EVOKER", "PIGLIN",
+            "SILVERFISH", "ENDERMITE", "PILLAGER", "VINDICATOR", "EVOKER", "WITHER_SKELETON", "PIGLIN",
             "HOGLIN", "STRIDER", "DOLPHIN", "SHULKER", "BREEZE", "BOGGED"
     );
     private static final List<Material> HUNTER_TOOLS = List.of(
@@ -121,6 +122,10 @@ public final class MobHuntGame implements Listener {
     private final Random random = new Random();
     private final LinkedHashSet<UUID> queue = new LinkedHashSet<>();
     private World world;
+    private World practiceWorld;
+    private final List<Arena> arenas = new ArrayList<>();
+    private final Map<UUID, Match> practiceSessions = new HashMap<>();
+    private final Map<UUID, PlayerSnapshot> practiceSnapshots = new HashMap<>();
     private BukkitTask queueTask;
     private int queueSeconds;
     private boolean queueAccelerated;
@@ -161,6 +166,7 @@ public final class MobHuntGame implements Listener {
             return;
         }
         buildVillage();
+        createPracticeWorld();
         spawnLobbyNpc();
         ready = true;
         plugin.getLogger().info("Mob Hunt is ready. Village arena: " + WORLD_NAME);
@@ -197,8 +203,8 @@ public final class MobHuntGame implements Listener {
             case "settings" -> openSettings(player);
             case "stats" -> openStats(player);
             case "spectate" -> cycleSpectator(player);
-            case "practice" -> openPracticeGuide(player);
-            default -> player.sendMessage(PREFIX + "Use /mobhunt [join|leave|status|settings|stats|spectate|practice].");
+            case "practice" -> { if (args.length > 1 && args[1].equalsIgnoreCase("leave")) leavePractice(player); else startPractice(player); }
+            default -> player.sendMessage(PREFIX + "Use /mobhunt [join|leave|status|settings|stats|spectate|practice [leave]].");
         }
     }
 
@@ -215,6 +221,7 @@ public final class MobHuntGame implements Listener {
 
     private void joinQueue(Player player) {
         UUID id = player.getUniqueId();
+        if (practiceSessions.containsKey(id)) { player.sendMessage(PREFIX + ChatColor.RED + "Leave practice first with /mobhunt practice leave."); return; }
         if (match != null) {
             player.sendMessage(PREFIX + ChatColor.RED + "A Mob Hunt match is already running.");
             return;
@@ -320,14 +327,17 @@ public final class MobHuntGame implements Listener {
             for (Player player : players) player.sendMessage(PREFIX + ChatColor.RED + "Not enough players. Queue again.");
             return;
         }
+        Arena selectedArena = selectRandomArena();
+        if (selectedArena != null) activateArena(selectedArena);
         Match next = new Match();
+        next.arenaName = selectedArena == null ? "Village" : selectedArena.name;
         match = next;
         for (Player player : players) {
             next.players.add(player.getUniqueId());
             next.snapshots.put(player.getUniqueId(), new PlayerSnapshot(player));
             next.scores.put(player.getUniqueId(), 0);
             player.closeInventory();
-            player.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Mob Hunt match started! 3 rounds. Stay inside the village border.");
+            player.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Mob Hunt match started! Map: " + next.arenaName + ". 3 rounds.");
         }
         startRound(next);
     }
@@ -435,7 +445,8 @@ public final class MobHuntGame implements Listener {
                             p.sendActionBar(ChatColor.LIGHT_PURPLE + "ROUND " + active.round + "/" + ROUNDS
                                     + ChatColor.GRAY + " • " + ChatColor.WHITE + active.secondsLeft + "s left"
                                     + ChatColor.GRAY + " • Hiders: " + ChatColor.AQUA + active.aliveHiders.size()
-                                    + ChatColor.GRAY + " • Hunter lives: " + ChatColor.RED + active.hunterLives);
+                                    + ChatColor.GRAY + " • Hunter lives: " + ChatColor.RED + active.hunterLives
+                                    + ChatColor.DARK_GRAY + " • " + ChatColor.YELLOW + active.arenaName);
                         }
                     }
                 }
@@ -553,7 +564,7 @@ public final class MobHuntGame implements Listener {
 
     private void applyMobAbility(Player player, String mob) {
         switch (mob) {
-            case "GHAST", "BAT", "BEE" -> {
+            case "GHAST", "BAT", "BEE", "PHANTOM", "ALLAY" -> {
                 player.setAllowFlight(true);
                 player.setFlying(true);
                 player.setFlySpeed(0.08f);
@@ -566,6 +577,14 @@ public final class MobHuntGame implements Listener {
                     player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, ROUND_SECONDS * 20, 0, false, false, true));
             case "WARDEN" ->
                     player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, ROUND_SECONDS * 20, 0, false, false, true));
+            case "WITHER_SKELETON" ->
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, ROUND_SECONDS * 20, 0, false, false, true));
+            case "STRAY" ->
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, ROUND_SECONDS * 20, 0, false, false, true));
+            case "CREEPER" ->
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, ROUND_SECONDS * 20, 0, false, false, true));
+            case "ENDERMAN" ->
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 1, false, false, true));
             case "IRON_GOLEM" ->
                     player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, ROUND_SECONDS * 20, 0, false, false, true));
             case "VILLAGER", "ALLAY" ->
@@ -597,7 +616,7 @@ public final class MobHuntGame implements Listener {
             Material icon;
             try { icon = Material.valueOf(mob + "_SPAWN_EGG"); } catch (IllegalArgumentException ex) { icon = Material.PAPER; }
             if (slot >= 45) break;
-            inv.setItem(slot++, named(icon, ChatColor.GREEN + pretty(mob), "Click to choose this mob", "Mob abilities apply automatically"));
+            inv.setItem(slot++, named(icon, ChatColor.GREEN + pretty(mob), "Click to choose this mob", mobDescription(mob), "Passive traits apply automatically"));
         }
         inv.setItem(45, named(Material.GRASS_BLOCK, ChatColor.GREEN + "Passive", "Show peaceful and neutral mobs"));
         inv.setItem(46, named(Material.IRON_SWORD, ChatColor.RED + "Hostile", "Show hostile mobs"));
@@ -606,6 +625,23 @@ public final class MobHuntGame implements Listener {
         inv.setItem(49, named(Material.COMPASS, ChatColor.AQUA + "Search mobs", "Click, then type a mob name in chat", "Current filter: " + (filter.isBlank() ? "all mobs" : filter)));
         inv.setItem(53, named(Material.BARRIER, ChatColor.RED + "Random mob", "Choose a random mob"));
         player.openInventory(inv);
+    }
+
+    private String mobDescription(String mob) {
+        return switch (mob) {
+            case "WITHER_SKELETON" -> "Hits apply Wither to the hunter";
+            case "BEE" -> "Can fly • sting ability";
+            case "SPIDER", "CAVE_SPIDER" -> "Climbs walls automatically";
+            case "STRAY" -> "Hits slow the hunter";
+            case "HUSK" -> "Hits apply Hunger";
+            case "BLAZE" -> "Fire resistance • flame burst";
+            case "GHAST", "BAT", "PHANTOM" -> "Can fly";
+            case "IRON_GOLEM" -> "High resistance • ground slam";
+            case "TURTLE" -> "Water breathing • defensive trait";
+            case "FOX" -> "Fast movement • pounce";
+            case "WARDEN" -> "Dark vision • sonic pulse";
+            default -> "Unique mob trait and special ability";
+        };
     }
 
     private boolean matchesMobFilter(String mob, String filter) {
@@ -742,6 +778,9 @@ public final class MobHuntGame implements Listener {
         boolean particles = plugin.getConfig().getBoolean(base + "particles", true);
         boolean sounds = plugin.getConfig().getBoolean(base + "sounds", true);
         inv.setItem(11, named(particles ? Material.GLOWSTONE_DUST : Material.GRAY_DYE, ChatColor.YELLOW + "Ability Particles: " + (particles ? "ON" : "OFF"), "Click to toggle ability particles."));
+        inv.setItem(13, named(usesSwapHands(player) ? Material.FEATHER : Material.ENDER_PEARL,
+                ChatColor.LIGHT_PURPLE + "Ability Trigger: " + (usesSwapHands(player) ? "F / Swap Hands" : "Right Click"),
+                "Click to switch between F and right-click."));
         inv.setItem(15, named(sounds ? Material.NOTE_BLOCK : Material.GRAY_DYE, ChatColor.AQUA + "Ability Sounds: " + (sounds ? "ON" : "OFF"), "Click to toggle ability sounds."));
         inv.setItem(22, named(Material.BARRIER, ChatColor.RED + "Close", "Close settings."));
         player.openInventory(inv);
@@ -875,7 +914,7 @@ public final class MobHuntGame implements Listener {
         player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
     }
     private boolean usesSwapHands(Player player) {
-        return plugin.getConfig().getString("player-settings." + player.getUniqueId() + ".mobhunt-ability-trigger", "RIGHT_CLICK")
+        return plugin.getConfig().getString("mobhunt.player-settings." + player.getUniqueId() + ".trigger", "RIGHT_CLICK")
                 .equalsIgnoreCase("SWAP_HANDS");
     }
 
@@ -1092,6 +1131,8 @@ public final class MobHuntGame implements Listener {
             event.setCancelled(true);
             String base = "mobhunt.player-settings." + player.getUniqueId() + ".";
             if (event.getRawSlot() == 11) plugin.getConfig().set(base + "particles", !plugin.getConfig().getBoolean(base + "particles", true));
+            else if (event.getRawSlot() == 13) plugin.getConfig().set(base + "trigger",
+                    usesSwapHands(player) ? "RIGHT_CLICK" : "SWAP_HANDS");
             else if (event.getRawSlot() == 15) plugin.getConfig().set(base + "sounds", !plugin.getConfig().getBoolean(base + "sounds", true));
             else if (event.getRawSlot() == 22) { player.closeInventory(); return; }
             plugin.saveConfig();
@@ -1362,6 +1403,7 @@ public final class MobHuntGame implements Listener {
     }
 
     private static final class Match {
+        String arenaName = "Village";
         final Set<UUID> players = new LinkedHashSet<>();
         final Set<UUID> aliveHiders = new LinkedHashSet<>();
         final Set<UUID> tagged = new LinkedHashSet<>();
