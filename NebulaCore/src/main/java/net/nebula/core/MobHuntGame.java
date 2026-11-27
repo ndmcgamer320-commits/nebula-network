@@ -31,13 +31,6 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.enchantments.Enchantment;
-import org.bukkit.entity.Projectile;
-import org.bukkit.entity.Arrow;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -378,6 +371,12 @@ public final class MobHuntGame implements Listener {
                 if (currentHunter != null) {
                     currentHunter.setWalkSpeed(0.2f);
                     currentHunter.removePotionEffect(PotionEffectType.DARKNESS);
+                    Set<Material> chosenTools = active.selectedTools.computeIfAbsent(active.hunter, ignored -> EnumSet.noneOf(Material.class));
+                    for (Material fallback : HUNTER_TOOLS) {
+                        if (chosenTools.size() >= 2) break;
+                        if (chosenTools.add(fallback)) currentHunter.getInventory().addItem(new ItemStack(fallback));
+                    }
+                    if (chosenTools.size() == 2) currentHunter.sendMessage(PREFIX + ChatColor.GREEN + "Your 2 tools are ready.");
                     currentHunter.sendTitle(ChatColor.GOLD + "GO!", ChatColor.GRAY + "Defeat the hiders!", 0, 25, 5);
                     currentHunter.sendMessage(PREFIX + "Your tools are ready. Defeat the hiders! You have 3 lives.");
                 }
@@ -593,7 +592,15 @@ public final class MobHuntGame implements Listener {
         Bukkit.getScheduler().runTask(plugin, () -> {
             Match active = match;
             Player player = Bukkit.getPlayer(id);
-            if (player != null && active != null && active.mobPickPending.contains(id)) openMobPicker(player, query);
+            if (player != null && active != null && active.mobPickPending.contains(id)) {
+                String normalized = query.toUpperCase(java.util.Locale.ROOT).replace(' ', '_');
+                boolean found = MOB_TYPES.stream().anyMatch(m -> m.contains(normalized));
+                if (found) openMobPicker(player, query);
+                else {
+                    player.sendMessage(PREFIX + ChatColor.RED + "No matching mob. Try a name such as wolf, bee, or warden.");
+                    openMobPicker(player, "");
+                }
+            }
         });
     }
     private void updateAntiCamping(Match active) {
@@ -876,7 +883,17 @@ public final class MobHuntGame implements Listener {
         event.setDroppedExp(0);
         event.setDeathMessage(null);
         Player killer = player.getKiller();
-        broadcastToMatch(active, ChatColor.RED + (killer == null ? player.getName() : killer.getName()) + ChatColor.GRAY + " eliminated " + ChatColor.YELLOW + player.getName() + ChatColor.GRAY + "!");
+        String cause = "";
+        EntityDamageEvent lastDamage = player.getLastDamageCause();
+        if (lastDamage instanceof EntityDamageByEntityEvent byEntity) {
+            Entity damager = byEntity.getDamager();
+            if (damager instanceof Projectile projectile) cause = " with " + pretty(projectile.getType().name());
+            else if (damager instanceof Player attacker) {
+                ItemStack weapon = attacker.getInventory().getItemInMainHand();
+                cause = " with " + (weapon.getType().isAir() ? "fists" : pretty(weapon.getType().name()));
+            }
+        }
+        broadcastToMatch(active, ChatColor.RED + (killer == null ? player.getName() : killer.getName()) + ChatColor.GRAY + " eliminated " + ChatColor.YELLOW + player.getName() + ChatColor.GRAY + cause + "!");
         UUID id = player.getUniqueId();
         if (id.equals(active.hunter)) {
             active.hunterLives--;
