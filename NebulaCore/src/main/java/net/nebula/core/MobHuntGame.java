@@ -709,7 +709,7 @@ public final class MobHuntGame implements Listener {
         player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
     }
     private boolean usesSwapHands(Player player) {
-        return plugin.getConfig().getString("player-settings." + player.getUniqueId() + ".mobhunt-ability-trigger", "SWAP_HANDS")
+        return plugin.getConfig().getString("player-settings." + player.getUniqueId() + ".mobhunt-ability-trigger", "RIGHT_CLICK")
                 .equalsIgnoreCase("SWAP_HANDS");
     }
 
@@ -730,6 +730,7 @@ public final class MobHuntGame implements Listener {
         Match active = match;
         if (active == null || !active.aliveHiders.contains(event.getPlayer().getUniqueId())) return;
         event.setCancelled(true);
+        if (!event.getAction().isRightClick()) return;
         if (!usesSwapHands(event.getPlayer())) useMobAbility(event.getPlayer(), active);
         else openAbilityGui(event.getPlayer());
     }
@@ -810,7 +811,7 @@ public final class MobHuntGame implements Listener {
             player.setWalkSpeed(0.2f);
             player.setFlySpeed(0.1f);
             PlayerSnapshot snapshot = active.snapshots.get(id);
-            if (snapshot != null) snapshot.restoreAtLobby(player, lobby);
+            if (snapshot != null) snapshot.restoreAtLobby(player, lobby, plugin);
             else player.teleport(lobby);
             player.updateInventory();
             player.sendTitle(ChatColor.GOLD + "MOB HUNT OVER",
@@ -850,6 +851,7 @@ public final class MobHuntGame implements Listener {
             int y = world.getHighestBlockYAt(x, z) + 1;
             Block floor = world.getBlockAt(x, y - 1, z);
             if (floor.getType().isSolid() && !floor.isLiquid()
+                    && world.getBiome(x, y, z).name().equals("PLAINS")
                     && world.getBlockAt(x, y, z).isEmpty()
                     && world.getBlockAt(x, y + 1, z).isEmpty()) {
                 return new Location(world, x + 0.5, y, z + 0.5);
@@ -1161,28 +1163,33 @@ public final class MobHuntGame implements Listener {
             effects = new ArrayList<>(player.getActivePotionEffects());
         }
 
-        void restoreAtLobby(Player player, Location lobby) {
+        void restoreAtLobby(Player player, Location lobby, JavaPlugin plugin) {
             player.closeInventory();
             player.teleport(lobby);
-            PlayerInventory inv = player.getInventory();
-            inv.clear();
-            inv.setContents(cloneItems(contents));
-            inv.setArmorContents(cloneItems(armor));
-            inv.setItemInOffHand(offhand == null ? null : offhand.clone());
-            player.setGameMode(gameMode);
-            player.setFoodLevel(food);
-            player.setSaturation(saturation);
-            double max = player.getAttribute(Attribute.MAX_HEALTH).getValue();
-            player.setHealth(Math.max(1.0, Math.min(health, max)));
-            player.setLevel(level);
-            player.setExp(exp);
-            for (PotionEffect effect : player.getActivePotionEffects()) player.removePotionEffect(effect.getType());
-            for (PotionEffect effect : effects) player.addPotionEffect(effect);
-            player.setWalkSpeed(walkSpeed);
-            player.setFlySpeed(flySpeed);
-            player.setAllowFlight(allowFlight);
-            player.setFlying(allowFlight && flying);
-            player.updateInventory();
+            // Restore on the next tick so lobby/world listeners cannot overwrite
+            // the saved hotbar while the teleport event is still being processed.
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                PlayerInventory inv = player.getInventory();
+                inv.clear();
+                inv.setContents(cloneItems(contents));
+                inv.setArmorContents(cloneItems(armor));
+                inv.setItemInOffHand(offhand == null ? null : offhand.clone());
+                player.setGameMode(gameMode);
+                player.setFoodLevel(food);
+                player.setSaturation(saturation);
+                double max = player.getAttribute(Attribute.MAX_HEALTH).getValue();
+                player.setHealth(Math.max(1.0, Math.min(health, max)));
+                player.setLevel(level);
+                player.setExp(exp);
+                for (PotionEffect effect : player.getActivePotionEffects()) player.removePotionEffect(effect.getType());
+                for (PotionEffect effect : effects) player.addPotionEffect(effect);
+                player.setWalkSpeed(walkSpeed);
+                player.setFlySpeed(flySpeed);
+                player.setAllowFlight(allowFlight);
+                player.setFlying(allowFlight && flying);
+                player.updateInventory();
+            });
         }
 
         private static ItemStack[] cloneItems(ItemStack[] input) {
