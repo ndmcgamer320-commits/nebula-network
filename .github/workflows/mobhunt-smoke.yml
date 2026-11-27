@@ -85,7 +85,6 @@ jobs:
 
       - name: Configure isolated test server
         run: |
-          cp eula.txt eula.txt
           cat > server.properties <<'EOF'
           server-ip=127.0.0.1
           server-port=25565
