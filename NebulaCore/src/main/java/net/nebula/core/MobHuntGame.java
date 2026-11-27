@@ -24,6 +24,12 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Arrow;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
@@ -307,6 +313,7 @@ public final class MobHuntGame implements Listener {
         if (match != active || active.ending) return;
         active.round++;
         active.roundEnded = false;
+        active.lastHiderAnnounced = false;
         if (active.round > ROUNDS) {
             finishMatch(active);
             return;
@@ -391,6 +398,7 @@ public final class MobHuntGame implements Listener {
                 }
                 updateHunterCompass(active);
                 updateAntiCamping(active);
+                updateLastHiderMode(active);
                 active.secondsLeft--;
             }
         }.runTaskTimer(plugin, 20L, 20L);
@@ -512,6 +520,97 @@ public final class MobHuntGame implements Listener {
         }
     }
 
+    private void assignMob(Match active, Player player, String mob) {
+        active.mobPickPending.remove(player.getUniqueId());
+        active.mobForms.put(player.getUniqueId(), mob);
+        applyDisguise(player, mob);
+        applyMobAbility(player, mob);
+        player.sendTitle(ChatColor.GREEN + "MOB SELECTED", ChatColor.GRAY + pretty(mob), 3, 30, 8);
+        player.sendMessage(PREFIX + ChatColor.GREEN + "Your mob form: " + ChatColor.AQUA + pretty(mob));
+    }
+    private void openMobPicker(Player player, String filter) {
+        Inventory inv = Bukkit.createInventory(null, 54, MOB_PICK_TITLE);
+        int slot = 0;
+        for (String mob : MOB_TYPES) {
+            if (!filter.isBlank() && !mob.toLowerCase().contains(filter.toLowerCase())) continue;
+            Material icon;
+            try { icon = Material.valueOf(mob + "_SPAWN_EGG"); } catch (IllegalArgumentException ex) { icon = Material.PAPER; }
+            if (slot >= 45) break;
+            inv.setItem(slot++, named(icon, ChatColor.GREEN + pretty(mob), "Click to choose this mob", "Mob abilities apply automatically"));
+        }
+        inv.setItem(49, named(Material.COMPASS, ChatColor.AQUA + "Search mobs", "Click, then type a mob name in chat", "Current filter: " + (filter.isBlank() ? "none" : filter)));
+        inv.setItem(53, named(Material.BARRIER, ChatColor.RED + "Random mob", "Choose a random mob"));
+        player.openInventory(inv);
+    }
+    @EventHandler
+    public void onMobPickerClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player) || !event.getView().getTitle().equals(MOB_PICK_TITLE)) return;
+        event.setCancelled(true);
+        Match active = match;
+        if (active == null || active.roundEnded || !active.mobPickPending.contains(player.getUniqueId())) return;
+        int slot = event.getRawSlot();
+        if (slot == 49) {
+            searchingMob.add(player.getUniqueId());
+            player.closeInventory();
+            player.sendMessage(PREFIX + ChatColor.AQUA + "Type a mob name in chat to search (example: warden).");
+            return;
+        }
+        if (slot == 53) {
+            assignMob(active, player, MOB_TYPES.get(random.nextInt(MOB_TYPES.size())));
+            player.closeInventory();
+            return;
+        }
+        if (slot < 0 || slot >= 45) return;
+        ItemStack item = event.getCurrentItem();
+        if (item == null || item.getType().isAir() || !item.hasItemMeta()) return;
+        String title = ChatColor.stripColor(item.getItemMeta().getDisplayName());
+        String chosen = MOB_TYPES.stream().filter(m -> pretty(m).equalsIgnoreCase(title)).findFirst().orElse(null);
+        if (chosen != null) { assignMob(active, player, chosen); player.closeInventory(); }
+    }
+    @EventHandler
+    public void onMobSearchChat(AsyncPlayerChatEvent event) {
+        UUID id = event.getPlayer().getUniqueId();
+        if (!searchingMob.remove(id)) return;
+        event.setCancelled(true);
+        String query = event.getMessage().trim();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            Match active = match;
+            Player player = Bukkit.getPlayer(id);
+            if (player != null && active != null && active.mobPickPending.contains(id)) openMobPicker(player, query);
+        });
+    }
+    private void updateAntiCamping(Match active) {
+        Player hunter = Bukkit.getPlayer(active.hunter);
+        for (UUID id : new ArrayList<>(active.aliveHiders)) {
+            Player hider = Bukkit.getPlayer(id);
+            if (hider == null || !hider.isOnline() || !hider.getWorld().equals(world)) continue;
+            if (hider.getLocation().getY() < arenaBaseY - CAMP_LOW_LIMIT) {
+                Location safe = hider.getLocation().clone();
+                safe.setY(world.getHighestBlockYAt(safe.getBlockX(), safe.getBlockZ()) + 1.0);
+                hider.teleport(safe);
+                hider.sendMessage(PREFIX + ChatColor.RED + "Anti-camping: underground hiding is disabled.");
+            } else if (hider.getLocation().getY() > arenaBaseY + CAMP_HIGH_LIMIT && hunter != null) {
+                ItemStack bow = named(Material.BOW, ChatColor.GOLD + "Anti-Camp Flame Bow", "Power III • Flame", "Granted while a hider stays above the village.");
+                bow.addEnchantment(Enchantment.POWER, 3);
+                bow.addEnchantment(Enchantment.FLAME, 1);
+                boolean has = Arrays.stream(hunter.getInventory().getContents()).filter(i -> i != null)
+                    .anyMatch(i -> i.getType() == Material.BOW && i.hasItemMeta() && ChatColor.stripColor(i.getItemMeta().getDisplayName()).contains("Anti-Camp Flame Bow"));
+                if (!has) hunter.getInventory().addItem(bow);
+            }
+        }
+    }
+    private void updateLastHiderMode(Match active) {
+        if (active.aliveHiders.size() != 1 || active.lastHiderAnnounced) return;
+        active.lastHiderAnnounced = true;
+        UUID id = active.aliveHiders.iterator().next();
+        Player last = Bukkit.getPlayer(id);
+        broadcastToMatch(active, ChatColor.GOLD + "" + ChatColor.BOLD + "LAST HIDER MODE! " + ChatColor.YELLOW + (last == null ? "One hider remains!" : last.getName() + " is the final hider!"));
+        if (last != null) {
+            last.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 0, false, false, true));
+            last.sendTitle(ChatColor.GOLD + "LAST HIDER", ChatColor.GRAY + "Survive until the timer ends!", 5, 50, 10);
+        }
+    }
+
     private void updateHunterCompass(Match active) {
         Player hunter = Bukkit.getPlayer(active.hunter);
         if (hunter == null || !hunter.isOnline() || !hunter.getWorld().equals(world)) return;
@@ -576,6 +675,7 @@ public final class MobHuntGame implements Listener {
             player.sendTitle(ChatColor.GOLD + "MOB HUNT OVER",
                     ChatColor.GRAY + "Winner: " + (winnerNames.isBlank() ? "No winner" : winnerNames), 5, 70, 15);
         }
+        buildVillage();
         active.ending = true;
         match = null;
     }
@@ -675,9 +775,63 @@ public final class MobHuntGame implements Listener {
 
     @EventHandler
     public void onNoDamage(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player player)) return;
+        if (!(event.getEntity() instanceof Player victim)) return;
         Match active = match;
-        if (active != null && active.players.contains(player.getUniqueId())) event.setCancelled(true);
+        if (active == null || !active.players.contains(victim.getUniqueId())) return;
+        if (event instanceof EntityDamageByEntityEvent byEntity) {
+            Player attacker = null;
+            if (byEntity.getDamager() instanceof Player p) attacker = p;
+            else if (byEntity.getDamager() instanceof Projectile projectile && projectile.getShooter() instanceof Player p) attacker = p;
+            if (attacker != null && active.players.contains(attacker.getUniqueId())
+                    && (active.aliveHiders.contains(attacker.getUniqueId()) || attacker.getUniqueId().equals(active.hunter))
+                    && (active.aliveHiders.contains(victim.getUniqueId()) || victim.getUniqueId().equals(active.hunter))) {
+                if (attacker.getUniqueId().equals(victim.getUniqueId())) event.setCancelled(true);
+                return;
+            }
+        }
+        event.setCancelled(true);
+    }
+    @EventHandler
+    public void onMobHuntDeath(PlayerDeathEvent event) {
+        Match active = match;
+        Player player = event.getEntity();
+        if (active == null || !active.players.contains(player.getUniqueId()) || active.roundEnded) return;
+        event.setKeepInventory(true);
+        event.getDrops().clear();
+        event.setDroppedExp(0);
+        event.setDeathMessage(null);
+        Player killer = player.getKiller();
+        broadcastToMatch(active, ChatColor.RED + (killer == null ? player.getName() : killer.getName()) + ChatColor.GRAY + " eliminated " + ChatColor.YELLOW + player.getName() + ChatColor.GRAY + "!");
+        UUID id = player.getUniqueId();
+        if (id.equals(active.hunter)) {
+            active.hunterLives--;
+            if (active.hunterLives <= 0) endRound(active, false);
+            else broadcastToMatch(active, ChatColor.GOLD + "Hunter has " + active.hunterLives + " lives remaining.");
+        } else if (active.aliveHiders.remove(id)) {
+            active.tagged.add(id);
+            DisguiseAPI.undisguiseToAll(player);
+            updateLastHiderMode(active);
+            if (active.aliveHiders.isEmpty()) endRound(active, true);
+        }
+    }
+    @EventHandler
+    public void onMobHuntRespawn(PlayerRespawnEvent event) {
+        Match active = match;
+        Player player = event.getPlayer();
+        if (active == null || !active.players.contains(player.getUniqueId())) return;
+        event.setRespawnLocation(new Location(world, 0.5, arenaBaseY + 1.0, 0.5));
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (match != active || active.roundEnded || active.ending) return;
+            if (player.getUniqueId().equals(active.hunter)) {
+                player.setGameMode(GameMode.ADVENTURE);
+                player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
+                giveHunterBaseKit(player);
+                player.sendTitle(ChatColor.RED + "HUNTER RESPAWN", ChatColor.GRAY + active.hunterLives + " lives left", 5, 35, 10);
+            } else {
+                player.setGameMode(GameMode.SPECTATOR);
+                player.sendTitle(ChatColor.GRAY + "SPECTATING", ChatColor.DARK_GRAY + "You are out this round.", 5, 35, 10);
+            }
+        });
     }
 
     @EventHandler
@@ -884,6 +1038,7 @@ public final class MobHuntGame implements Listener {
         final Map<UUID, Long> abilityReadyAt = new HashMap<>();
         int hunterLives = HUNTER_LIVES;
         BukkitTask mobPickTask;
+        boolean lastHiderAnnounced;
         void cancelRoundTasks() {
             if (releaseTask != null) releaseTask.cancel();
             if (roundTask != null) roundTask.cancel();
