@@ -698,11 +698,28 @@ public final class MobHuntGame implements Listener {
         Player hunter = Bukkit.getPlayer(active.hunter);
         switch (mob) {
             case "WARDEN" -> {
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 100) {
+                Location start = player.getEyeLocation();
+                player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_WARDEN_SONIC_CHARGE, 1.2f, 0.8f);
+                if (hunter != null && hunter.getWorld().equals(world)
+                        && hunter.getLocation().distanceSquared(player.getLocation()) <= 100) {
+                    Location end = hunter.getEyeLocation();
+                    org.bukkit.util.Vector line = end.toVector().subtract(start.toVector());
+                    double length = line.length();
+                    if (length > 0.01) {
+                        org.bukkit.util.Vector step = line.normalize().multiply(0.65);
+                        Location point = start.clone();
+                        for (double d = 0; d < length; d += 0.65) {
+                            player.getWorld().spawnParticle(org.bukkit.Particle.SONIC_BOOM, point, 1, 0, 0, 0, 0);
+                            point.add(step);
+                        }
+                    }
                     hunter.damage(6.0, player);
-                    hunter.setVelocity(hunter.getLocation().toVector().subtract(player.getLocation().toVector()).normalize().multiply(0.8));
+                    org.bukkit.util.Vector push = hunter.getLocation().toVector().subtract(player.getLocation().toVector());
+                    if (push.lengthSquared() > 0.001) hunter.setVelocity(push.normalize().multiply(0.8).setY(0.25));
+                    hunter.getWorld().spawnParticle(org.bukkit.Particle.SONIC_BOOM, end, 1);
                 }
                 player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_WARDEN_SONIC_BOOM, 1f, 1f);
+                player.getWorld().spawnParticle(org.bukkit.Particle.SCULK_SOUL, player.getLocation().add(0, 1, 0), 18, 0.45, 0.5, 0.45, 0.03);
             }
             case "CREEPER" -> {
                 player.getWorld().createExplosion(player.getLocation(), 0f, false, false);
@@ -721,9 +738,46 @@ public final class MobHuntGame implements Listener {
             }
             case "WOLF", "FOX", "CAT" -> {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2));
+                player.getWorld().spawnParticle(org.bukkit.Particle.CLOUD, player.getLocation(), 20, 0.45, 0.2, 0.45, 0.04);
                 if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player);
             }
-            default -> { if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player); player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 1)); }
+            case "IRON_GOLEM" -> {
+                player.getWorld().spawnParticle(org.bukkit.Particle.BLOCK, player.getLocation().add(0, 0.2, 0),
+                        35, 0.7, 0.15, 0.7, Material.IRON_BLOCK.createBlockData());
+                player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_IRON_GOLEM_ATTACK, 1f, 0.8f);
+                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 25) {
+                    hunter.damage(5.0, player);
+                    org.bukkit.util.Vector push = hunter.getLocation().toVector().subtract(player.getLocation().toVector());
+                    if (push.lengthSquared() > 0.001) hunter.setVelocity(push.normalize().multiply(0.65).setY(0.35));
+                }
+            }
+            case "VILLAGER", "ALLAY" -> {
+                player.getWorld().spawnParticle(org.bukkit.Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 24, 0.6, 0.7, 0.6, 0.05);
+                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2));
+                player.setVelocity(player.getLocation().getDirection().multiply(0.85).setY(0.25));
+            }
+            case "BLAZE" -> {
+                player.getWorld().spawnParticle(org.bukkit.Particle.FLAME, player.getLocation().add(0, 1, 0), 30, 0.5, 0.5, 0.5, 0.02);
+                player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_BLAZE_SHOOT, 1f, 1f);
+                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 25) {
+                    hunter.damage(4.0, player);
+                    hunter.setFireTicks(30);
+                }
+            }
+            case "HORSE", "DONKEY", "MULE", "LLAMA", "STRIDER" -> {
+                player.getWorld().spawnParticle(org.bukkit.Particle.CLOUD, player.getLocation(), 25, 0.45, 0.15, 0.45, 0.05);
+                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2));
+                player.setVelocity(player.getLocation().getDirection().multiply(1.25).setY(0.3));
+            }
+            default -> {
+                player.getWorld().spawnParticle(org.bukkit.Particle.CRIT, player.getLocation().add(0, 1, 0), 18, 0.45, 0.5, 0.45, 0.1);
+                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player);
+                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 1));
+            }
+        }
+        if (!mob.equals("WARDEN")) {
+            player.getWorld().spawnParticle(org.bukkit.Particle.ENCHANT, player.getLocation().add(0, 1, 0), 18, 0.5, 0.6, 0.5, 0.25);
+            player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.7f, 1.3f);
         }
         player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
     }
@@ -743,15 +797,17 @@ public final class MobHuntGame implements Listener {
 
     @EventHandler
     public void onAbilityItem(PlayerInteractEvent event) {
-        ItemStack item = event.getItem();
-        if (item == null || !item.hasItemMeta() || item.getItemMeta().getDisplayName() == null
-                || !ChatColor.stripColor(item.getItemMeta().getDisplayName()).equals("Mob Ability")) return;
+        Player player = event.getPlayer();
         Match active = match;
-        if (active == null || !active.aliveHiders.contains(event.getPlayer().getUniqueId())) return;
+        if (active == null || !active.aliveHiders.contains(player.getUniqueId())
+                || !event.getAction().isRightClick() || usesSwapHands(player)) return;
+        boolean blankHand = item == null || item.getType().isAir();
+        boolean abilityItem = item != null && item.hasItemMeta()
+                && item.getItemMeta().getDisplayName() != null
+                && ChatColor.stripColor(item.getItemMeta().getDisplayName()).equals("Mob Ability");
+        if (!blankHand && !abilityItem) return;
         event.setCancelled(true);
-        if (!event.getAction().isRightClick()) return;
-        if (!usesSwapHands(event.getPlayer())) useMobAbility(event.getPlayer(), active);
-        else openAbilityGui(event.getPlayer());
+        useMobAbility(player, active);
     }
     @EventHandler
     public void onAbilityGuiClick(InventoryClickEvent event) {
