@@ -95,8 +95,16 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         hud.enable();
         networkFeatures = new NebulaNetworkFeatures(this);
         networkFeatures.enable();
-        mobHunt = new MobHuntGame(this, lobby);
-        mobHunt.enable();
+        // Mob Hunt is optional: a disguise dependency failure must never disable
+        // the lobby, HUD, menus, or the rest of the network.
+        try {
+            mobHunt = new MobHuntGame(this, lobby);
+            mobHunt.enable();
+        } catch (LinkageError | RuntimeException ex) {
+            mobHunt = null;
+            getLogger().severe("Mob Hunt could not start; the rest of Nebula Network will remain enabled: "
+                    + ex.getClass().getSimpleName() + ": " + ex.getMessage());
+        }
         Bukkit.getScheduler().runTaskLater(this, () -> {
             regenerateArena(Bukkit.getWorld("bedwars_1"), "bedwars_1");
             regenerateArena(Bukkit.getWorld("duel_arena"), "duel_arena");
@@ -465,7 +473,11 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             else if (slot == 15) {
                 p.closeInventory();
                 p.sendMessage(PREFIX + "Lucky Pillars is not configured yet.");
-            } else if (slot == 16) { p.closeInventory(); mobHunt.openMenu(p); }
+            } else if (slot == 16) {
+                p.closeInventory();
+                if (mobHunt != null) mobHunt.openMenu(p);
+                else p.sendMessage(PREFIX + ChatColor.RED + "Mob Hunt is temporarily unavailable.");
+            }
             else if (slot == 22) { p.closeInventory(); p.teleport(lobby); }
             return;
         }
@@ -711,8 +723,10 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             return true;
         }
         if (command.getName().equalsIgnoreCase("mobhunt")) {
-            if (sender instanceof Player p) mobHunt.handleCommand(p, args);
-            else sender.sendMessage("Players only.");
+            if (sender instanceof Player p) {
+                if (mobHunt != null) mobHunt.handleCommand(p, args);
+                else p.sendMessage(PREFIX + ChatColor.RED + "Mob Hunt is temporarily unavailable.");
+            } else sender.sendMessage("Players only.");
             return true;
         }
         if (command.getName().equalsIgnoreCase("duel")) {
