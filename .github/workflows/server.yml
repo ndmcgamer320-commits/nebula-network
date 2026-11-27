@@ -26,6 +26,8 @@ jobs:
         with:
           path: |
             world/
+            world_nether/
+            world_the_end/
             lobby/
             survival_1/
             survival_2/
@@ -35,19 +37,17 @@ jobs:
             pillars_2/
             duel_arena/
             mob_hunt/
-            plugins/NebulaCore/
-            plugins/AuthMe/
-            plugins/Multiverse-Core/
-            plugins/Multiverse-Inventories/
-            plugins/VoidWorldGenerator/
-            plugins/GrimAC/
-            plugins/LibsDisguises/
-            plugins/packetevents/
+            plugins/
             ops.json
+            usercache.json
+            whitelist.json
+            banned-players.json
+            banned-ips.json
             server.properties
           key: nebula-server-state-${{ github.run_id }}
           restore-keys: |
             nebula-server-state-
+          save-always: true
 
       - name: Verify committed EULA and tunnel secret
         env:
@@ -223,12 +223,10 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare natural Mob Hunt village world
+      - name: Preserve existing Mob Hunt world
         run: |
-          # Remove the previous flat/generated arena so Paper creates a fresh
-          # normal overworld from the fixed seed and generates vanilla villages.
-          rm -rf mob_hunt
-          echo "Mob Hunt will generate a real vanilla village from its configured seed."
+          # Never delete mob_hunt here: the world is part of persistent server state.
+          if [ -d mob_hunt ]; then echo "Restoring the existing Mob Hunt world."; else echo "Mob Hunt world will be created on first startup."; fi
 
       - name: Run Minecraft server
         env:
