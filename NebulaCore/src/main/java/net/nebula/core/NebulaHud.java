@@ -208,7 +208,21 @@ public final class NebulaHud implements Listener {
         player.setPlayerListName(rankPrefix(rank) + ChatColor.WHITE + player.getName());
     }
 
+    public void setSidebarVisible(Player player, boolean visible) {
+        if (!visible) {
+            Objective objective = player.getScoreboard().getObjective("nebula");
+            if (objective != null) objective.setDisplaySlot(null);
+        } else {
+            updateSidebar(player);
+        }
+    }
+
     private void updateSidebar(Player player) {
+        if (!plugin.getConfig().getBoolean("player-settings." + player.getUniqueId() + ".scoreboard", true)) {
+            Objective hidden = player.getScoreboard().getObjective("nebula");
+            if (hidden != null) hidden.setDisplaySlot(null);
+            return;
+        }
         UUID id = player.getUniqueId();
         Scoreboard board = scoreboards.computeIfAbsent(id, ignored -> Bukkit.getScoreboardManager().getNewScoreboard());
         Objective objective = board.getObjective("nebula");
