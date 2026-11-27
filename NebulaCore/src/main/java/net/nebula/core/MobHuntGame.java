@@ -86,7 +86,7 @@ public final class MobHuntGame implements Listener {
     private static final int ROUNDS = 3;
     private static final int ROUND_SECONDS = 300;
     private static final int HUNTER_LIVES = 3;
-    private static final int MOB_PICK_SECONDS = 15;
+    private static final int MOB_PICK_SECONDS = 10;
     private static final int CAMP_LOW_LIMIT = 5;
     private static final int CAMP_HIGH_LIMIT = 12;
     private static final String MOB_PICK_TITLE = ChatColor.DARK_GREEN + "Choose Your Mob";
@@ -164,7 +164,7 @@ public final class MobHuntGame implements Listener {
         }
         Inventory inv = Bukkit.createInventory(null, 27, MENU_TITLE);
         inv.setItem(11, named(Material.COMPASS, ChatColor.GREEN + "Join Mob Hunt",
-                "Queue with at least 2 players", "20-second start countdown", "3+ players: 10-second countdown"));
+                "Queue with at least 2 players", "20-second start countdown", "3+ players: 10-second countdown", "Round 2-3 mob choice: 10 seconds"));
         inv.setItem(13, named(Material.PLAYER_HEAD, ChatColor.AQUA + "Match Information",
                 "3 rounds • Random hunter each round", "5-minute combat survival", "3 hunter lives • Choose mobs in rounds 2-3"));
         inv.setItem(15, named(Material.BARRIER, ChatColor.RED + "Leave Queue",
@@ -370,7 +370,7 @@ public final class MobHuntGame implements Listener {
                     active.mobPickPending.add(id);
                     openMobPicker(player, "");
                     player.sendTitle(ChatColor.GREEN + "CHOOSE YOUR MOB",
-                            ChatColor.GRAY + "Round " + active.round + ": pick any mob", 5, 45, 10);
+                            ChatColor.GRAY + "You have 10 seconds to pick any mob", 5, 45, 10);
                 }
             }
         }
@@ -593,7 +593,7 @@ public final class MobHuntGame implements Listener {
         if (slot == 49) {
             searchingMob.add(player.getUniqueId());
             player.closeInventory();
-            player.sendMessage(PREFIX + ChatColor.AQUA + "Type a mob name in chat to search (example: warden).");
+            player.sendMessage(PREFIX + ChatColor.AQUA + "Type a mob name in chat to search (example: warden). You have 10 seconds total.");
             return;
         }
         if (slot == 53) {
