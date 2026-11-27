@@ -206,7 +206,9 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 if (!player.isOnline()) { cancel(); return; }
                 AuthMeApi authMe = AuthMeApi.getInstance();
                 if (authMe != null && authMe.isAuthenticated(player)) {
-                    if (mobHunt == null || !mobHunt.handleReconnect(player)) returnPlayerToLobby(player);
+                    boolean resumedMobHunt = mobHunt != null && mobHunt.handleReconnect(player);
+                    if (!resumedMobHunt) returnPlayerToLobby(player);
+                    else if (hud != null) hud.refreshPlayer(player);
                     player.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
                     Bukkit.broadcastMessage(PREFIX + ChatColor.WHITE + player.getName() + ChatColor.GRAY + " joined the network.");
                     cancel();
