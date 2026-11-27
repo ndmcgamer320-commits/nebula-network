@@ -34,12 +34,15 @@ jobs:
             pillars_1/
             pillars_2/
             duel_arena/
+            mob_hunt/
             plugins/NebulaCore/
             plugins/AuthMe/
             plugins/Multiverse-Core/
             plugins/Multiverse-Inventories/
             plugins/VoidWorldGenerator/
             plugins/GrimAC/
+            plugins/LibsDisguises/
+            plugins/packetevents/
             ops.json
             server.properties
           key: nebula-server-state-${{ github.run_id }}
