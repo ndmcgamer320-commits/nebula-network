@@ -406,7 +406,8 @@ public final class MobHuntGame implements Listener {
                     if (p != null && p.isOnline()) {
                         p.sendActionBar(ChatColor.LIGHT_PURPLE + "ROUND " + active.round + "/" + ROUNDS
                                 + ChatColor.GRAY + " • " + ChatColor.WHITE + active.secondsLeft + "s left"
-                                + ChatColor.GRAY + " • Hiders: " + ChatColor.AQUA + active.aliveHiders.size());
+                                + ChatColor.GRAY + " • Hiders: " + ChatColor.AQUA + active.aliveHiders.size()
+                                + ChatColor.GRAY + " • Hunter lives: " + ChatColor.RED + active.hunterLives);
                     }
                 }
                 updateHunterCompass(active);
@@ -544,6 +545,7 @@ public final class MobHuntGame implements Listener {
         player.sendMessage(PREFIX + ChatColor.GREEN + "Your mob form: " + ChatColor.AQUA + pretty(mob));
     }
     private void openMobPicker(Player player, String filter) {
+        filter = filter == null ? "" : filter.trim().replace(' ', '_');
         Inventory inv = Bukkit.createInventory(null, 54, MOB_PICK_TITLE);
         int slot = 0;
         for (String mob : MOB_TYPES) {
