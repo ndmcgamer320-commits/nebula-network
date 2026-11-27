@@ -17,6 +17,7 @@ import org.bukkit.WorldCreator;
 import org.bukkit.WorldType;
 import org.bukkit.Registry;
 import org.bukkit.generator.structure.Structure;
+import org.bukkit.util.StructureSearchResult;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -1051,8 +1052,9 @@ public final class MobHuntGame implements Listener {
         for (String key : villageKeys) {
             Structure structure = Registry.STRUCTURE.get(NamespacedKey.minecraft(key));
             if (structure == null) continue;
-            Location candidate = world.locateNearestStructure(origin, structure, 64, false);
-            if (candidate == null) continue;
+            StructureSearchResult result = world.locateNearestStructure(origin, structure, 64, false);
+            if (result == null) continue;
+            Location candidate = result.getLocation();
             double distance = candidate.distanceSquared(origin);
             if (distance < nearestDistance) {
                 nearestDistance = distance;
