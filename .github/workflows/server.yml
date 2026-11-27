@@ -165,7 +165,7 @@ jobs:
           RUNTIME_HOURS: ${{ inputs.runtime_hours }}
         run: |
           SECONDS_TO_RUN=$((RUNTIME_HOURS * 3600))
-          java -Xms2G -Xmx5G -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -jar paper.jar --nogui &
+          java -Xms1G -Xmx3G -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=150 -jar paper.jar --nogui &
           SERVER_PID=$!
           END=$(( $(date +%s) + SECONDS_TO_RUN ))
           while kill -0 "$SERVER_PID" 2>/dev/null && [ "$(date +%s)" -lt "$END" ]; do sleep 15; done
