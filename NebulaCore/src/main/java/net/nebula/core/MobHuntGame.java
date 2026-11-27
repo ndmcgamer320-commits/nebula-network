@@ -406,6 +406,7 @@ public final class MobHuntGame implements Listener {
                 }
             }, HUNTER_HIDE_SECONDS * 20L);
         }
+        active.mobPickEndsAt = System.currentTimeMillis() + MOB_PICK_SECONDS * 1000L;
         active.mobPickTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (match != active || active.roundEnded || active.ending) return;
             for (UUID pending : new ArrayList<>(active.mobPickPending)) {
@@ -428,8 +429,8 @@ public final class MobHuntGame implements Listener {
                     Player p = Bukkit.getPlayer(id);
                     if (p != null && p.isOnline()) {
                         if (active.mobPickPending.contains(id)) {
-                            int remaining = Math.max(0, (int) Math.ceil((active.mobPickTask == null ? 0L : active.mobPickTask.getTaskId()) / 20.0));
-                            p.sendActionBar(ChatColor.GREEN + "CHOOSE YOUR MOB • " + MOB_PICK_SECONDS + " seconds");
+                            int remaining = Math.max(0, (int) Math.ceil((active.mobPickEndsAt - System.currentTimeMillis()) / 1000.0));
+                            p.sendActionBar(ChatColor.GREEN + "CHOOSE YOUR MOB • " + remaining + "s");
                         } else {
                             p.sendActionBar(ChatColor.LIGHT_PURPLE + "ROUND " + active.round + "/" + ROUNDS
                                     + ChatColor.GRAY + " • " + ChatColor.WHITE + active.secondsLeft + "s left"
@@ -1380,6 +1381,7 @@ public final class MobHuntGame implements Listener {
         final Map<UUID, Long> abilityReadyAt = new HashMap<>();
         int hunterLives = HUNTER_LIVES;
         BukkitTask mobPickTask;
+        long mobPickEndsAt;
         boolean lastHiderAnnounced;
         void cancelRoundTasks() {
             if (releaseTask != null) releaseTask.cancel();
