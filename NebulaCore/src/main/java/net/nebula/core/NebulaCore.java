@@ -100,8 +100,13 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         hud.enable();
         networkFeatures = new NebulaNetworkFeatures(this);
         networkFeatures.enable();
-        mobHunt = new MobHuntGame(this, lobby);
-        mobHunt.enable();
+        if (Bukkit.getPluginManager().isPluginEnabled("LibsDisguises")) {
+            mobHunt = new MobHuntGame(this, lobby);
+            mobHunt.enable();
+        } else {
+            mobHunt = null;
+            getLogger().severe("Mob Hunt is disabled because LibsDisguises did not load. The network lobby and other games will continue.");
+        }
         Bukkit.getScheduler().runTaskLater(this, () -> {
             regenerateArena(Bukkit.getWorld("bedwars_1"), "bedwars_1");
             regenerateArena(Bukkit.getWorld("duel_arena"), "duel_arena");
@@ -718,8 +723,10 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             return true;
         }
         if (command.getName().equalsIgnoreCase("mobhunt")) {
-            if (sender instanceof Player p) mobHunt.handleCommand(p, args);
-            else sender.sendMessage("Players only.");
+            if (sender instanceof Player p) {
+                if (mobHunt == null) p.sendMessage(PREFIX + ChatColor.RED + "Mob Hunt is temporarily unavailable because its disguise dependency did not load.");
+                else mobHunt.handleCommand(p, args);
+            } else sender.sendMessage("Players only.");
             return true;
         }
         if (command.getName().equalsIgnoreCase("duel")) {
