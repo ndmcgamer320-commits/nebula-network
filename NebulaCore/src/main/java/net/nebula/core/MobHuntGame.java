@@ -375,9 +375,6 @@ public final class MobHuntGame implements Listener {
         recovery.set(path + ".fly-speed", snapshot.flySpeed);
         recovery.set(path + ".level", snapshot.level);
         recovery.set(path + ".exp", snapshot.exp);
-        List<Map<String, Object>> effects = new ArrayList<>();
-        for (PotionEffect effect : snapshot.effects) effects.add(effect.serialize());
-        recovery.set(path + ".effects", effects);
         saveRecovery();
     }
 
@@ -433,9 +430,6 @@ public final class MobHuntGame implements Listener {
         player.setLevel(section.getInt("level", 0));
         player.setExp((float) section.getDouble("exp", 0.0));
         for (PotionEffect active : player.getActivePotionEffects()) player.removePotionEffect(active.getType());
-        for (Map<String, Object> effect : section.getMapList("effects")) {
-            try { player.addPotionEffect(PotionEffect.deserialize(effect)); } catch (IllegalArgumentException ignored) { }
-        }
         player.setWalkSpeed((float) section.getDouble("walk-speed", 0.2));
         player.setFlySpeed((float) section.getDouble("fly-speed", 0.1));
         boolean allowFlight = section.getBoolean("allow-flight", false);
@@ -454,7 +448,12 @@ public final class MobHuntGame implements Listener {
     }
 
     private void saveMatchHistory(Match active, String winners) {
-        List<Map<String, Object>> records = new ArrayList<>(history.getMapList("matches"));
+        List<Map<String, Object>> records = new ArrayList<>();
+        for (Map<?, ?> stored : history.getMapList("matches")) {
+            Map<String, Object> typed = new LinkedHashMap<>();
+            stored.forEach((k, v) -> typed.put(String.valueOf(k), v));
+            records.add(typed);
+        }
         Map<String, Object> record = new LinkedHashMap<>();
         record.put("ended-at", System.currentTimeMillis());
         record.put("map", active.mapName);
