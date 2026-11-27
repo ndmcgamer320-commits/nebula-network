@@ -1276,7 +1276,6 @@ public final class MobHuntGame implements Listener {
             case "HUSK" -> new PotionEffect(PotionEffectType.HUNGER, 200, 0, true, true, true);
             case "STRAY" -> new PotionEffect(PotionEffectType.SLOWNESS, 100, 0, true, true, true);
             case "SHULKER" -> new PotionEffect(PotionEffectType.LEVITATION, 40, 0, true, true, true);
-            case "WARDEN" -> new PotionEffect(PotionEffectType.DARKNESS, 100, 0, true, true, true);
             default -> null;
         };
         if (effect != null) {
