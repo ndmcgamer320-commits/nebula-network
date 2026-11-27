@@ -137,6 +137,18 @@ public final class NebulaNetworkFeatures implements Listener {
             data.set(path(killerId) + ".kills", number(killerId, "kills", 0) + 1);
             data.set(path(killerId) + ".elo", getElo(killerId) + 15);
             data.set(path(victimId) + ".elo", Math.max(0, getElo(victimId) - 10));
+            String mode = switch (victim.getWorld().getName()) {
+                case "duel_arena" -> "duels";
+                case "bedwars_1", "bedwars_2" -> "bedwars";
+                case "survival_1", "survival_2" -> "survival";
+                default -> "overall";
+            };
+            if (!mode.equals("overall")) {
+                String modePath = path(killerId) + ".elo." + mode;
+                String victimModePath = path(victimId) + ".elo." + mode;
+                data.set(modePath, data.getInt(modePath, 1000) + 15);
+                data.set(victimModePath, Math.max(0, data.getInt(victimModePath, 1000) - 10));
+            }
         }
         save();
     }
@@ -146,6 +158,28 @@ public final class NebulaNetworkFeatures implements Listener {
     }
 
     public boolean handleCommand(CommandSender sender, String command, String[] args) {
+        if (command.equalsIgnoreCase("profile")) {
+            if (args.length > 0 && !isAdmin(sender) && (!(sender instanceof Player p) || !p.getName().equalsIgnoreCase(args[0]))) {
+                sender.sendMessage(PREFIX + ChatColor.RED + "You can only view your own profile.");
+                return true;
+            }
+            Player target = args.length == 0 ? (sender instanceof Player p ? p : null) : Bukkit.getPlayerExact(args[0]);
+            if (target == null) { sender.sendMessage(PREFIX + "Usage: /profile [online-player]"); return true; }
+            UUID id = target.getUniqueId();
+            String rank = plugin.getConfig().getString("ranks." + id, "MEMBER");
+            int elo = getElo(id);
+            String tier = elo >= 2200 ? "NEBULA" : elo >= 1900 ? "MASTER" : elo >= 1700 ? "DIAMOND" : elo >= 1500 ? "PLATINUM" : elo >= 1300 ? "GOLD" : elo >= 1100 ? "SILVER" : "BRONZE";
+            sender.sendMessage(ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "✦ NEBULA PLAYER PROFILE ✦");
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + target.getName() + ChatColor.GRAY + " | Network rank: " + ChatColor.WHITE + rank);
+            sender.sendMessage(ChatColor.GRAY + "Overall ELO: " + ChatColor.AQUA + elo + ChatColor.GRAY + " | Competitive tier: " + ChatColor.GOLD + tier);
+            sender.sendMessage(ChatColor.GRAY + "Duels: " + ChatColor.AQUA + data.getInt(path(id) + ".elo.duels", 1000)
+                    + ChatColor.GRAY + " | BedWars: " + ChatColor.AQUA + data.getInt(path(id) + ".elo.bedwars", 1000)
+                    + ChatColor.GRAY + " | Survival: " + ChatColor.AQUA + data.getInt(path(id) + ".elo.survival", 1000));
+            sender.sendMessage(ChatColor.GRAY + "Kills: " + ChatColor.GREEN + number(id, "kills", 0)
+                    + ChatColor.GRAY + " | Deaths: " + ChatColor.RED + number(id, "deaths", 0)
+                    + ChatColor.GRAY + " | Ping: " + ChatColor.YELLOW + target.getPing() + "ms");
+            return true;
+        }
         if (command.equalsIgnoreCase("stats")) {
             if (args.length > 0 && !isAdmin(sender) && (!(sender instanceof Player p) || !p.getName().equalsIgnoreCase(args[0]))) {
                 sender.sendMessage(PREFIX + ChatColor.RED + "You can only view your own stats.");
@@ -159,7 +193,9 @@ public final class NebulaNetworkFeatures implements Listener {
             if (online == null) { sender.sendMessage(PREFIX + "Usage: /stats <player>"); return true; }
             UUID id = online.getUniqueId();
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + "✦ " + online.getName() + " STATS ✦");
-            sender.sendMessage(ChatColor.GRAY + "ELO: " + ChatColor.AQUA + getElo(id));
+            sender.sendMessage(ChatColor.GRAY + "Overall ELO: " + ChatColor.AQUA + getElo(id)
+                    + ChatColor.GRAY + " | Duels: " + ChatColor.AQUA + data.getInt(path(id) + ".elo.duels", 1000)
+                    + ChatColor.GRAY + " | BedWars: " + ChatColor.AQUA + data.getInt(path(id) + ".elo.bedwars", 1000));
             sender.sendMessage(ChatColor.GRAY + "Kills: " + ChatColor.GREEN + number(id, "kills", 0)
                     + ChatColor.GRAY + " | Deaths: " + ChatColor.RED + number(id, "deaths", 0));
             sender.sendMessage(ChatColor.GRAY + "Activity flags: " + ChatColor.YELLOW + number(id, "flags", 0));
