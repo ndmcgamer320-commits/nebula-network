@@ -688,7 +688,7 @@ public final class MobHuntGame implements Listener {
         active.selectedTools.clear();
         active.mobForms.clear();
         active.mobPickPending.clear();
-        active.hunterLives = HUNTER_LIVES;
+        active.hunterLives = configuredHunterLives();
         world.getWorldBorder().setCenter(0.5, 0.5);
         world.getWorldBorder().setSize("castle".equals(active.mapName) ? 84.0 : 92.0);
         active.zoneShrunk = false;
@@ -701,7 +701,7 @@ public final class MobHuntGame implements Listener {
         }
         active.hunter = candidates.get(random.nextInt(candidates.size()));
         active.hunterLocked = true;
-        active.secondsLeft = ROUND_SECONDS;
+        active.secondsLeft = configuredRoundSeconds();
         active.hunterLives = HUNTER_LIVES;
         Player hunter = Bukkit.getPlayer(active.hunter);
         for (UUID id : candidates) {
@@ -722,7 +722,7 @@ public final class MobHuntGame implements Listener {
                 player.teleport(randomVillageSpawn());
                 giveHiderKit(player);
                 if (active.round == 1) {
-                    assignMob(active, player, MOB_TYPES.get(random.nextInt(MOB_TYPES.size())));
+                    assignMob(active, player, randomEnabledMob());
                 } else {
                     active.mobPickPending.add(id);
                     openMobPicker(player, "");
@@ -756,7 +756,7 @@ public final class MobHuntGame implements Listener {
                 Player hider = Bukkit.getPlayer(pending);
                 if (hider != null) assignMob(active, hider, MOB_TYPES.get(random.nextInt(MOB_TYPES.size())));
             }
-        }, MOB_PICK_SECONDS * 20L);
+        }, configuredMobPickSeconds() * 20L);
         active.roundTask = new BukkitRunnable() {
             @Override public void run() {
                 if (match != active || active.ending || active.roundEnded) {
@@ -768,6 +768,7 @@ public final class MobHuntGame implements Listener {
                     cancel();
                     return;
                 }
+                for (UUID id : active.aliveHiders) active.survivalSeconds.merge(id, 1, Integer::sum);
                 for (UUID id : active.players) {
                     Player p = Bukkit.getPlayer(id);
                     if (p != null && p.isOnline()) {
@@ -890,6 +891,11 @@ public final class MobHuntGame implements Listener {
         }
     }
 
+    private String randomEnabledMob() {
+        List<String> enabled = MOB_TYPES.stream().filter(this::isMobEnabled).toList();
+        return enabled.isEmpty() ? "PIG" : enabled.get(random.nextInt(enabled.size()));
+    }
+
     private void applyMobAbility(Player player, String mob) {
         switch (mob) {
             case "GHAST", "BAT", "BEE" -> {
@@ -898,23 +904,27 @@ public final class MobHuntGame implements Listener {
                 player.setFlySpeed(0.08f);
             }
             case "RABBIT", "FROG", "SLIME", "MAGMA_CUBE" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, ROUND_SECONDS * 20, 1, false, false, true));
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, configuredRoundSeconds() * 20, 1, false, false, true));
             case "WOLF", "FOX", "CAT" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 1, false, false, true));
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, configuredRoundSeconds() * 20, 1, false, false, true));
             case "TURTLE", "AXOLOTL" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, ROUND_SECONDS * 20, 0, false, false, true));
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, configuredRoundSeconds() * 20, 0, false, false, true));
             case "WARDEN" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, ROUND_SECONDS * 20, 0, false, false, true));
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, configuredRoundSeconds() * 20, 0, false, false, true));
             default -> { }
         }
     }
 
     private void assignMob(Match active, Player player, String mob) {
         active.mobPickPending.remove(player.getUniqueId());
+        if (!isMobEnabled(mob)) { mob = randomEnabledMob(); }
         active.mobForms.put(player.getUniqueId(), mob);
         applyDisguise(player, mob);
         applyMobAbility(player, mob);
         player.sendTitle(ChatColor.GREEN + "MOB SELECTED", ChatColor.GRAY + pretty(mob), 3, 30, 8);
+        plugin.getConfig().set("mobhunt.stats." + player.getUniqueId() + ".mob-uses." + mob,
+                plugin.getConfig().getInt("mobhunt.stats." + player.getUniqueId() + ".mob-uses." + mob, 0) + 1);
+        plugin.saveConfig();
         player.sendMessage(PREFIX + ChatColor.GREEN + "Your mob form: " + ChatColor.AQUA + pretty(mob));
     }
     private void openMobPicker(Player player, String filter) {
@@ -922,7 +932,7 @@ public final class MobHuntGame implements Listener {
         Inventory inv = Bukkit.createInventory(null, 54, MOB_PICK_TITLE);
         int slot = 0;
         for (String mob : MOB_TYPES) {
-            if (!filter.isBlank() && !mob.toLowerCase().contains(filter.toLowerCase())) continue;
+            if (!isMobEnabled(mob) || (!filter.isBlank() && !mob.toLowerCase().contains(filter.toLowerCase()))) continue;
             Material icon;
             try { icon = Material.valueOf(mob + "_SPAWN_EGG"); } catch (IllegalArgumentException ex) { icon = Material.PAPER; }
             if (slot >= 45) break;
@@ -968,7 +978,7 @@ public final class MobHuntGame implements Listener {
             Player player = Bukkit.getPlayer(id);
             if (player != null && active != null && active.mobPickPending.contains(id)) {
                 String normalized = query.toUpperCase(java.util.Locale.ROOT).replace(' ', '_');
-                boolean found = MOB_TYPES.stream().anyMatch(m -> m.contains(normalized));
+                boolean found = MOB_TYPES.stream().anyMatch(m -> isMobEnabled(m) && m.contains(normalized));
                 if (found) openMobPicker(player, query);
                 else {
                     player.sendMessage(PREFIX + ChatColor.RED + "No matching mob. Try a name such as wolf, bee, or warden.");
@@ -1011,7 +1021,7 @@ public final class MobHuntGame implements Listener {
         Player last = Bukkit.getPlayer(id);
         broadcastToMatch(active, ChatColor.GOLD + "" + ChatColor.BOLD + "LAST HIDER MODE! " + ChatColor.YELLOW + (last == null ? "One hider remains!" : last.getName() + " is the final hider!"));
         if (last != null) {
-            last.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 0, false, false, true));
+            last.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, configuredRoundSeconds() * 20, 0, false, false, true));
             last.sendTitle(ChatColor.GOLD + "LAST HIDER", ChatColor.GRAY + "Survive until the timer ends!", 5, 50, 10);
         }
     }
@@ -1042,7 +1052,7 @@ public final class MobHuntGame implements Listener {
         String mob = active.mobForms.getOrDefault(id, "PIG");
         long now = System.currentTimeMillis(), readyAt = active.abilityReadyAt.getOrDefault(id, 0L);
         if (now < readyAt) { player.sendMessage(PREFIX + ChatColor.RED + "Ability cooldown: " + ((readyAt - now + 999) / 1000) + "s."); openAbilityGui(player); return; }
-        active.abilityReadyAt.put(id, now + abilityCooldown(mob));
+        active.abilityReadyAt.put(id, now + configuredAbilityCooldown(mob));
         Player hunter = Bukkit.getPlayer(active.hunter);
         switch (mob) {
             case "WARDEN" -> {
@@ -1409,7 +1419,7 @@ public final class MobHuntGame implements Listener {
         world.setGameRule(GameRule.DO_WEATHER_CYCLE, false);
         world.setGameRule(GameRule.DO_MOB_SPAWNING, false);
         world.setGameRule(GameRule.KEEP_INVENTORY, true);
-        int base = arenaBaseY > 0 ? arenaBaseY : Math.max(world.getMinHeight() + 4, world.getHighestBlockYAt(0, 0));
+        int base = 80;
         arenaBaseY = base;
         for (int x = -48; x <= 48; x++) {
             for (int z = -48; z <= 48; z++) {
@@ -1574,6 +1584,13 @@ public final class MobHuntGame implements Listener {
         BukkitTask roundTask;
         final Set<UUID> mobPickPending = new LinkedHashSet<>();
         final Map<UUID, Long> abilityReadyAt = new HashMap<>();
+        final Map<UUID, Integer> survivalSeconds = new HashMap<>();
+        final Map<UUID, Integer> kills = new HashMap<>();
+        final Set<UUID> disconnected = new LinkedHashSet<>();
+        final Set<UUID> forfeited = new LinkedHashSet<>();
+        final Map<UUID, BukkitTask> disconnectTasks = new HashMap<>();
+        boolean privateMatch;
+        int hunterKillStreak;
         int hunterLives = HUNTER_LIVES;
         BukkitTask mobPickTask;
         boolean lastHiderAnnounced;
