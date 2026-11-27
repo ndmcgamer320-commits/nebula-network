@@ -576,13 +576,15 @@ public final class MobHuntGame implements Listener {
                 player.setFlying(true);
                 player.setFlySpeed(mob.equals("GHAST") ? 0.05f : 0.07f);
             }
-            case "RABBIT", "FROG", "SLIME", "MAGMA_CUBE", "GOAT" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, ROUND_SECONDS * 20, 1, false, false, true));
+            case "RABBIT", "FROG", "SLIME", "MAGMA_CUBE", "GOAT" -> {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, ROUND_SECONDS * 20, 1, false, false, true));
+                if (mob.equals("MAGMA_CUBE")) player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, ROUND_SECONDS * 20, 0, false, false, true));
+            }
             case "HORSE", "DONKEY", "MULE", "LLAMA", "CAMEL" ->
                     player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 0, false, false, true));
             case "TURTLE", "AXOLOTL", "DOLPHIN" ->
                     player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, ROUND_SECONDS * 20, 0, false, false, true));
-            case "WITHER_SKELETON", "BLAZE", "MAGMA_CUBE", "STRIDER" ->
+            case "WITHER_SKELETON", "BLAZE", "STRIDER" ->
                     player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, ROUND_SECONDS * 20, 0, false, false, true));
             default -> { }
         }
@@ -930,26 +932,6 @@ public final class MobHuntGame implements Listener {
                     hunter.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 60, 0)); hunter.damage(2.0, player);
                 }
             }
-            case "SPIDER", "CAVE_SPIDER" -> { player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 2)); player.setVelocity(player.getLocation().getDirection().multiply(1.1).setY(0.35)); }
-            case "SLIME", "MAGMA_CUBE", "FROG", "RABBIT" -> {
-                player.setVelocity(player.getLocation().getDirection().multiply(0.8).setY(0.9));
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player);
-            }
-            case "WOLF", "FOX", "CAT" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2));
-                player.getWorld().spawnParticle(org.bukkit.Particle.CLOUD, player.getLocation(), 20, 0.45, 0.2, 0.45, 0.04);
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 9) hunter.damage(3.0, player);
-            }
-            case "IRON_GOLEM" -> {
-                player.getWorld().spawnParticle(org.bukkit.Particle.BLOCK, player.getLocation().add(0, 0.2, 0),
-                        35, 0.7, 0.15, 0.7, Material.IRON_BLOCK.createBlockData());
-                player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_IRON_GOLEM_ATTACK, 1f, 0.8f);
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 25) {
-                    hunter.damage(5.0, player);
-                    org.bukkit.util.Vector push = hunter.getLocation().toVector().subtract(player.getLocation().toVector());
-                    if (push.lengthSquared() > 0.001) hunter.setVelocity(push.normalize().multiply(0.65).setY(0.35));
-                }
-            }
             case "BLAZE" -> {
                 player.getWorld().spawnParticle(org.bukkit.Particle.FLAME, player.getLocation().add(0, 1, 0), 30, 0.5, 0.5, 0.5, 0.02);
                 player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_BLAZE_SHOOT, 1f, 1f);
@@ -957,11 +939,6 @@ public final class MobHuntGame implements Listener {
                     hunter.damage(4.0, player);
                     hunter.setFireTicks(30);
                 }
-            }
-            case "HORSE", "DONKEY", "MULE", "LLAMA", "STRIDER" -> {
-                player.getWorld().spawnParticle(org.bukkit.Particle.CLOUD, player.getLocation(), 25, 0.45, 0.15, 0.45, 0.05);
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2));
-                player.setVelocity(player.getLocation().getDirection().multiply(1.25).setY(0.3));
             }
             default -> {
                 player.sendMessage(PREFIX + ChatColor.GRAY + "This mob has no special active ability in vanilla Minecraft.");
