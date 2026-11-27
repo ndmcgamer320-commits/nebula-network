@@ -28,6 +28,7 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Fireball;
+import org.bukkit.entity.SmallFireball;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
@@ -935,12 +936,10 @@ public final class MobHuntGame implements Listener {
                 }
             }
             case "BLAZE" -> {
-                player.getWorld().spawnParticle(org.bukkit.Particle.FLAME, player.getLocation().add(0, 1, 0), 30, 0.5, 0.5, 0.5, 0.02);
+                SmallFireball fireball = player.launchProjectile(SmallFireball.class);
+                fireball.setIsIncendiary(false);
+                fireball.setYield(0f);
                 player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_BLAZE_SHOOT, 1f, 1f);
-                if (hunter != null && hunter.getWorld().equals(world) && hunter.getLocation().distanceSquared(player.getLocation()) <= 25) {
-                    hunter.damage(4.0, player);
-                    hunter.setFireTicks(30);
-                }
             }
             default -> {
                 player.sendMessage(PREFIX + ChatColor.GRAY + "This mob has no special active ability in vanilla Minecraft.");
