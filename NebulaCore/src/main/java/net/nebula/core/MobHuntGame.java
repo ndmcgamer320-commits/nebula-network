@@ -504,13 +504,17 @@ public final class MobHuntGame implements Listener {
             MobDisguise disguise = new MobDisguise(type, true);
             disguise.setScalePlayerToDisguise(true);
             disguise.setModifyBoundingBox(true);
-            disguise.setSelfDisguiseVisible(true);
+            // Keep the disguise visible to other players, but hide the self-disguise
+            // from the hider's own client. This preserves the normal Steve first-person
+            // camera, hand rendering, mouse look and player movement without a mob model
+            // clipping through the camera.
+            disguise.setSelfDisguiseVisible(false);
             DisguiseAPI.disguiseToAll(player, disguise);
         } catch (IllegalArgumentException ex) {
             MobDisguise fallback = new MobDisguise(DisguiseType.PIG, true);
             fallback.setScalePlayerToDisguise(true);
             fallback.setModifyBoundingBox(true);
-            fallback.setSelfDisguiseVisible(true);
+            fallback.setSelfDisguiseVisible(false);
             DisguiseAPI.disguiseToAll(player, fallback);
             plugin.getLogger().warning("Mob Hunt disguise type " + mobName + " is unavailable; using PIG.");
         }
