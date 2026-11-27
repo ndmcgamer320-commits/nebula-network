@@ -50,6 +50,7 @@ The public address is shown by the Playit agent logs. Share that address with Ja
 | `/rank <player> <OWNER\|ADMIN\|MVP\|VIP\|MEMBER>` | Set an online player's network rank (console, OWNER or ADMIN) |
 | `/bedwars` | Enter the BedWars map preview |
 | `/duel` | Enter the Duel map preview |
+| `/mobhunt [join|leave|status]` | Join or manage the Mob Hunt queue |
 | `/arenareset [bedwars\|duel\|all]` | Regenerate arena map(s) (operator permission) |
 
 ## Notes and limits
