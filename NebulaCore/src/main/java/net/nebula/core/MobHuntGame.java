@@ -23,6 +23,13 @@ import org.bukkit.block.data.Directional;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
+import org.bukkit.entity.Arrow;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -72,7 +79,10 @@ public final class MobHuntGame implements Listener {
     private static final int MIN_PLAYERS = 2;
     private static final int MAX_PLAYERS = 8;
     private static final int ROUNDS = 3;
-    private static final int ROUND_SECONDS = 120;
+    private static final int ROUND_SECONDS = 300;
+    private static final int HUNTER_LIVES = 3;
+    private static final String MOB_PICK_TITLE = ChatColor.DARK_GREEN + "Choose Your Mob";
+    private static final String MOB_SEARCH_TITLE = ChatColor.DARK_AQUA + "Mob Search";
     private static final int HUNTER_HIDE_SECONDS = 15;
     private static final List<String> MOB_TYPES = List.of(
             "PIG", "COW", "SHEEP", "CHICKEN", "WOLF", "CAT", "FOX", "RABBIT",
@@ -99,6 +109,8 @@ public final class MobHuntGame implements Listener {
     private boolean queueAccelerated;
     private Match match;
     private boolean ready;
+    private int arenaBaseY;
+    private final Set<UUID> searchingMob = new LinkedHashSet<>();
 
     public MobHuntGame(JavaPlugin plugin, Location lobby) {
         this.plugin = plugin;
@@ -138,7 +150,7 @@ public final class MobHuntGame implements Listener {
         inv.setItem(11, named(Material.COMPASS, ChatColor.GREEN + "Join Mob Hunt",
                 "Queue with at least 2 players", "20-second start countdown", "3+ players: 10-second countdown"));
         inv.setItem(13, named(Material.PLAYER_HEAD, ChatColor.AQUA + "Match Information",
-                "3 rounds • Random hunter each round", "Hiders become real mob disguises", "Tag-only game: no player damage"));
+                "3 rounds • Random hunter each round", "5-minute combat survival", "3 hunter lives • Choose mobs in rounds 2-3"));
         inv.setItem(15, named(Material.BARRIER, ChatColor.RED + "Leave Queue",
                 "Click to leave the waiting queue"));
         player.openInventory(inv);
@@ -303,6 +315,9 @@ public final class MobHuntGame implements Listener {
         active.aliveHiders.clear();
         active.tagged.clear();
         active.selectedTools.clear();
+        active.mobForms.clear();
+        active.mobPickPending.clear();
+        active.hunterLives = HUNTER_LIVES;
 
         List<UUID> candidates = new ArrayList<>(active.players);
         candidates.removeIf(id -> Bukkit.getPlayer(id) == null || !Bukkit.getPlayer(id).isOnline());
@@ -313,6 +328,7 @@ public final class MobHuntGame implements Listener {
         active.hunter = candidates.get(random.nextInt(candidates.size()));
         active.hunterLocked = true;
         active.secondsLeft = ROUND_SECONDS;
+        active.hunterLives = HUNTER_LIVES;
         Player hunter = Bukkit.getPlayer(active.hunter);
         for (UUID id : candidates) {
             Player player = Bukkit.getPlayer(id);
@@ -329,16 +345,16 @@ public final class MobHuntGame implements Listener {
                 player.sendMessage(PREFIX + "Choose exactly 2 utility items before the 15-second release.");
             } else {
                 active.aliveHiders.add(id);
-                String mob = MOB_TYPES.get(random.nextInt(MOB_TYPES.size()));
-                active.mobForms.put(id, mob);
-                applyDisguise(player, mob);
                 player.teleport(randomVillageSpawn());
                 giveHiderKit(player);
-                applyMobAbility(player, mob);
-                player.sendTitle(ChatColor.GREEN + "HIDE!",
-                        ChatColor.GRAY + "Your mob form: " + mob.replace('_', ' '), 5, 45, 10);
-                player.sendMessage(PREFIX + ChatColor.GREEN + "You are disguised as " + ChatColor.AQUA
-                        + mob.replace('_', ' ') + ChatColor.GRAY + ". Hide in the village!");
+                if (active.round == 1) {
+                    assignMob(active, player, MOB_TYPES.get(random.nextInt(MOB_TYPES.size())));
+                } else {
+                    active.mobPickPending.add(id);
+                    openMobPicker(player, "");
+                    player.sendTitle(ChatColor.GREEN + "CHOOSE YOUR MOB",
+                            ChatColor.GRAY + "Round " + active.round + ": pick any mob", 5, 45, 10);
+                }
             }
         }
         if (hunter != null) {
@@ -349,8 +365,8 @@ public final class MobHuntGame implements Listener {
                 if (currentHunter != null) {
                     currentHunter.setWalkSpeed(0.2f);
                     currentHunter.removePotionEffect(PotionEffectType.DARKNESS);
-                    currentHunter.sendTitle(ChatColor.GOLD + "GO!", ChatColor.GRAY + "Find and tag the hiders!", 0, 25, 5);
-                    currentHunter.sendMessage(PREFIX + "Your two selected tools are ready. Right-click a hider nearby to tag them.");
+                    currentHunter.sendTitle(ChatColor.GOLD + "GO!", ChatColor.GRAY + "Defeat the hiders!", 0, 25, 5);
+                    currentHunter.sendMessage(PREFIX + "Your tools are ready. Defeat the hiders! You have 3 lives.");
                 }
             }, HUNTER_HIDE_SECONDS * 20L);
         }
@@ -374,6 +390,7 @@ public final class MobHuntGame implements Listener {
                     }
                 }
                 updateHunterCompass(active);
+                updateAntiCamping(active);
                 active.secondsLeft--;
             }
         }.runTaskTimer(plugin, 20L, 20L);
@@ -757,6 +774,7 @@ public final class MobHuntGame implements Listener {
         world.setGameRule(GameRule.DO_MOB_SPAWNING, false);
         world.setGameRule(GameRule.KEEP_INVENTORY, true);
         int base = Math.max(world.getMinHeight() + 4, world.getHighestBlockYAt(0, 0));
+        arenaBaseY = base;
         for (int x = -48; x <= 48; x++) {
             for (int z = -48; z <= 48; z++) {
                 world.getBlockAt(x, base, z).setType(Material.GRASS_BLOCK, false);
@@ -862,11 +880,17 @@ public final class MobHuntGame implements Listener {
         boolean ending;
         BukkitTask releaseTask;
         BukkitTask roundTask;
+        final Set<UUID> mobPickPending = new LinkedHashSet<>();
+        final Map<UUID, Long> abilityReadyAt = new HashMap<>();
+        int hunterLives = HUNTER_LIVES;
+        BukkitTask mobPickTask;
         void cancelRoundTasks() {
             if (releaseTask != null) releaseTask.cancel();
             if (roundTask != null) roundTask.cancel();
+            if (mobPickTask != null) mobPickTask.cancel();
             releaseTask = null;
             roundTask = null;
+            mobPickTask = null;
         }
     }
 
