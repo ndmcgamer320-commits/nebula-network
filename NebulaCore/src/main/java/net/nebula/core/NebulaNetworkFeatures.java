@@ -64,7 +64,9 @@ public final class NebulaNetworkFeatures implements Listener {
         }
         flag(player, type);
         mutedUntil.put(player.getUniqueId(), now + 10000L);
-        player.sendMessage(PREFIX + ChatColor.RED + "Slow down. Chat/command cooldown: 10 seconds.");
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (player.isOnline()) player.sendMessage(PREFIX + ChatColor.RED + "Slow down. Chat/command cooldown: 10 seconds.");
+        });
         return true;
     }
 
