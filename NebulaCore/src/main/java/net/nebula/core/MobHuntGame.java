@@ -786,6 +786,84 @@ public final class MobHuntGame implements Listener {
         player.openInventory(inv);
     }
 
+    private void createPracticeWorld() {
+        practiceWorld = Bukkit.getWorld(PRACTICE_WORLD_NAME);
+        if (practiceWorld == null) {
+            WorldCreator creator = new WorldCreator(PRACTICE_WORLD_NAME);
+            creator.type(WorldType.FLAT);
+            creator.generateStructures(false);
+            practiceWorld = Bukkit.createWorld(creator);
+        }
+        if (practiceWorld == null) {
+            plugin.getLogger().warning("Mob Hunt practice world could not be created.");
+            return;
+        }
+        practiceWorld.setGameRule(GameRule.DO_MOB_SPAWNING, false);
+        practiceWorld.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, false);
+        practiceWorld.setGameRule(GameRule.DO_WEATHER_CYCLE, false);
+        practiceWorld.setTime(6000L);
+        practiceWorld.setStorm(false);
+        int y = Math.max(80, practiceWorld.getMinHeight() + 10);
+        for (int x = -18; x <= 18; x++) {
+            for (int z = -18; z <= 18; z++) {
+                practiceWorld.getBlockAt(x, y - 1, z).setType(Material.SMOOTH_STONE, false);
+                for (int h = 0; h < 8; h++) practiceWorld.getBlockAt(x, y + h, z).setType(Material.AIR, false);
+            }
+        }
+        practiceWorld.setSpawnLocation(0, y, 0);
+        practiceWorld.getWorldBorder().setCenter(0.5, 0.5);
+        practiceWorld.getWorldBorder().setSize(64.0);
+    }
+
+    private void startPractice(Player player) {
+        if (practiceWorld == null) {
+            player.sendMessage(PREFIX + ChatColor.RED + "Practice world is unavailable.");
+            return;
+        }
+        if (match != null || queue.contains(player.getUniqueId())) {
+            player.sendMessage(PREFIX + ChatColor.RED + "Leave the match queue or wait for the current match to finish first.");
+            return;
+        }
+        UUID id = player.getUniqueId();
+        if (practiceSessions.containsKey(id)) {
+            openMobPicker(player, "");
+            return;
+        }
+        practiceSnapshots.put(id, new PlayerSnapshot(player));
+        Match session = new Match();
+        session.players.add(id);
+        session.aliveHiders.add(id);
+        practiceSessions.put(id, session);
+        player.closeInventory();
+        player.teleport(new Location(practiceWorld, 0.5, practiceWorld.getSpawnLocation().getY(), 0.5));
+        player.getInventory().clear();
+        player.getInventory().setArmorContents(null);
+        player.setGameMode(GameMode.SURVIVAL);
+        player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
+        player.setFoodLevel(20);
+        player.setAllowFlight(false);
+        player.setFlying(false);
+        player.getInventory().setItem(8, named(Material.NETHER_STAR, ChatColor.GREEN + "Mob Ability", "Right-click or use your configured key"));
+        player.sendTitle(ChatColor.LIGHT_PURPLE + "MOB HUNT PRACTICE", ChatColor.GRAY + "Choose a mob to test its traits", 5, 45, 10);
+        openMobPicker(player, "");
+    }
+
+    private void leavePractice(Player player) {
+        UUID id = player.getUniqueId();
+        Match session = practiceSessions.remove(id);
+        PlayerSnapshot snapshot = practiceSnapshots.remove(id);
+        searchingMob.remove(id);
+        DisguiseAPI.undisguiseToAll(player);
+        for (PotionEffect effect : player.getActivePotionEffects()) player.removePotionEffect(effect.getType());
+        player.setAllowFlight(false);
+        player.setFlying(false);
+        player.setWalkSpeed(0.2f);
+        player.setFlySpeed(0.1f);
+        if (snapshot != null) snapshot.restoreAtLobby(player, lobby, plugin);
+        else if (plugin instanceof NebulaCore core) core.returnPlayerToLobby(player);
+        player.sendMessage(PREFIX + ChatColor.GREEN + "You left Mob Hunt practice.");
+    }
+
     private void openPracticeGuide(Player player) {
         Inventory inv = Bukkit.createInventory(null, 27, ChatColor.DARK_PURPLE + "Mob Hunt Practice");
         inv.setItem(11, named(Material.SPAWNER, ChatColor.GREEN + "Ability Training", "Use /mobhunt join to enter a live test match.", "Abilities are available to hiders during a round.", "Use /mobhunt settings to customize effects."));
