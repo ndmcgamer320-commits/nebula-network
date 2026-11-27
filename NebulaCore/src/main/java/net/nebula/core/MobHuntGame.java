@@ -197,7 +197,11 @@ public final class MobHuntGame implements Listener {
             case "leave", "cancel" -> leaveQueue(player);
             case "status" -> sendStatus(player);
             case "admin" -> { if (!player.hasPermission("nebulacore.admin")) { player.sendMessage(PREFIX + ChatColor.RED + "No permission."); return; } openAdminMenu(player); }
-            default -> player.sendMessage(PREFIX + "Use /mobhunt [join|leave|status].");
+            case "party" -> handlePartyCommand(player, args);
+            case "private" -> handlePrivateCommand(player, args);
+            case "stats" -> showStats(player, args.length > 1 ? args[1] : player.getName());
+            case "leaderboard", "top" -> showLeaderboard(player);
+            default -> player.sendMessage(PREFIX + "Use /mobhunt [join|leave|status|party|private|stats|leaderboard|admin].");
         }
     }
 
@@ -214,43 +218,42 @@ public final class MobHuntGame implements Listener {
 
     private void joinQueue(Player player) {
         UUID id = player.getUniqueId();
-        if (match != null) {
-            player.sendMessage(PREFIX + ChatColor.RED + "A Mob Hunt match is already running.");
-            return;
-        }
+        if (match != null) { player.sendMessage(PREFIX + ChatColor.RED + "A Mob Hunt match is already running."); return; }
         if (player.getWorld().getName().equals("bedwars_1") || player.getWorld().getName().equals("duel_arena")) {
-            player.sendMessage(PREFIX + ChatColor.RED + "Leave your current minigame before joining Mob Hunt.");
-            return;
+            player.sendMessage(PREFIX + ChatColor.RED + "Leave your current minigame before joining Mob Hunt."); return;
         }
-        if (queue.contains(id)) {
-            player.sendMessage(PREFIX + "You are already waiting for Mob Hunt.");
-            return;
+        UUID leader = partyLeaderOf(id);
+        if (leader != null && !leader.equals(id)) {
+            player.sendMessage(PREFIX + ChatColor.YELLOW + "Your party leader must queue the party."); return;
         }
-        if (queue.size() >= MAX_PLAYERS) {
-            player.sendMessage(PREFIX + ChatColor.RED + "The Mob Hunt queue is full (8 players).");
-            return;
+        LinkedHashSet<UUID> group = parties.getOrDefault(id, new LinkedHashSet<>(Set.of(id)));
+        if (group.stream().anyMatch(queue::contains)) { player.sendMessage(PREFIX + "Your party is already queued."); return; }
+        if (queue.size() + group.size() > MAX_PLAYERS) { player.sendMessage(PREFIX + ChatColor.RED + "Your party does not fit in the remaining queue slots."); return; }
+        for (UUID member : group) {
+            Player online = Bukkit.getPlayer(member);
+            if (online == null || !online.isOnline()) { player.sendMessage(PREFIX + ChatColor.RED + "Every party member must be online to queue."); return; }
+            if (online.getWorld().getName().equals("bedwars_1") || online.getWorld().getName().equals("duel_arena")) {
+                player.sendMessage(PREFIX + ChatColor.RED + "Every party member must leave their current minigame first."); return;
+            }
         }
-        queue.add(id);
+        queue.addAll(group);
         broadcastQueue();
-        if (queue.size() >= MIN_PLAYERS && queueTask == null) {
-            startQueueCountdown(20);
-        } else if (queue.size() >= 3 && queueTask != null && !queueAccelerated) {
-            queueSeconds = 10;
-            queueAccelerated = true;
+        if (queue.size() >= MIN_PLAYERS && queueTask == null) startQueueCountdown(20);
+        else if (queue.size() >= 3 && queueTask != null && !queueAccelerated) {
+            queueSeconds = 10; queueAccelerated = true;
             broadcast(ChatColor.GOLD + "3 players joined! Mob Hunt now starts in 10 seconds.");
         }
     }
 
     private void leaveQueue(Player player) {
-        boolean removed = queue.remove(player.getUniqueId());
-        if (removed) {
-            player.sendMessage(PREFIX + "You left the Mob Hunt queue.");
-            broadcastQueue();
-        } else if (match != null && match.players.contains(player.getUniqueId())) {
-            player.sendMessage(PREFIX + ChatColor.RED + "You cannot leave during a round. Use /spawn after the match.");
-        } else {
-            player.sendMessage(PREFIX + "You are not in the Mob Hunt queue.");
-        }
+        UUID id = player.getUniqueId();
+        UUID leader = partyLeaderOf(id);
+        Set<UUID> group = leader == null ? Set.of(id) : parties.getOrDefault(leader, new LinkedHashSet<>(Set.of(id)));
+        boolean removed = false;
+        for (UUID member : group) removed |= queue.remove(member);
+        if (removed) { player.sendMessage(PREFIX + "Your party left the Mob Hunt queue."); broadcastQueue(); }
+        else if (match != null && match.players.contains(id)) player.sendMessage(PREFIX + ChatColor.RED + "You cannot leave during a round. Use /spawn after the match.");
+        else player.sendMessage(PREFIX + "You are not in the Mob Hunt queue.");
         if (queue.size() < MIN_PLAYERS) cancelQueueCountdown();
     }
 
@@ -315,21 +318,46 @@ public final class MobHuntGame implements Listener {
         List<Player> players = queue.stream().map(Bukkit::getPlayer)
                 .filter(p -> p != null && p.isOnline()).collect(Collectors.toCollection(ArrayList::new));
         queue.clear();
-        if (players.size() < MIN_PLAYERS) {
-            for (Player player : players) player.sendMessage(PREFIX + ChatColor.RED + "Not enough players. Queue again.");
+        beginMatch(players, false);
+    }
+
+    private void startPrivateMatch(Player host) {
+        if (match != null) { host.sendMessage(PREFIX + ChatColor.RED + "Another Mob Hunt match is running."); return; }
+        if (!host.getUniqueId().equals(privateHost)) { host.sendMessage(PREFIX + ChatColor.RED + "Only the private-match host can start it."); return; }
+        List<Player> players = privateRoster.stream().map(Bukkit::getPlayer)
+                .filter(p -> p != null && p.isOnline()).collect(Collectors.toCollection(ArrayList::new));
+        if (players.size() < MIN_PLAYERS) { host.sendMessage(PREFIX + ChatColor.RED + "Invite at least one more online player."); return; }
+        privateRoster.clear(); privateHost = null;
+        beginMatch(players, true);
+    }
+
+    private void beginMatch(List<Player> players, boolean privateMatch) {
+        if (match != null) { players.forEach(p -> p.sendMessage(PREFIX + ChatColor.RED + "Another Mob Hunt match is already running.")); return; }
+        if (players.size() < MIN_PLAYERS || players.size() > MAX_PLAYERS) {
+            players.forEach(p -> p.sendMessage(PREFIX + ChatColor.RED + "Mob Hunt requires 2–8 online players."));
             return;
         }
         Match next = new Match();
-        next.mapName = plugin.getConfig().getBoolean("mobhunt.random-map", true) ? (random.nextBoolean() ? "village" : "castle") : plugin.getConfig().getString("mobhunt.default-map", "village");
+        next.privateMatch = privateMatch;
+        next.mapName = plugin.getConfig().getBoolean("mobhunt.random-map", true)
+                ? (random.nextBoolean() ? "village" : "castle")
+                : plugin.getConfig().getString("mobhunt.default-map", "village");
         if ("castle".equalsIgnoreCase(next.mapName)) buildCastle(); else buildVillage();
         match = next;
         for (Player player : players) {
-            next.players.add(player.getUniqueId());
-            next.snapshots.put(player.getUniqueId(), new PlayerSnapshot(player));
-            next.scores.put(player.getUniqueId(), 0);
+            UUID id = player.getUniqueId();
+            next.players.add(id);
+            PlayerSnapshot snapshot = new PlayerSnapshot(player);
+            next.snapshots.put(id, snapshot);
+            persistRecovery(id, snapshot);
+            next.scores.put(id, 0);
+            next.survivalSeconds.put(id, 0);
+            next.kills.put(id, 0);
             player.closeInventory();
-            player.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Mob Hunt match started! 3 rounds. Stay inside the village border.");
+            player.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Mob Hunt match started! 3 rounds. Map: " + pretty(next.mapName)
+                    + (privateMatch ? ChatColor.GOLD + " • Private match" : ""));
         }
+        logMatch("START", next, "map=" + next.mapName + ", private=" + privateMatch);
         startRound(next);
     }
 
