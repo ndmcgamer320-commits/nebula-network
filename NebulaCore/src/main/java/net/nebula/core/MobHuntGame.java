@@ -69,6 +69,8 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.io.File;
+import java.io.IOException;
 import java.util.stream.Collectors;
 
 /**
@@ -92,6 +94,8 @@ public final class MobHuntGame implements Listener {
     private static final String MOB_PICK_TITLE = ChatColor.DARK_GREEN + "Choose Your Mob";
     private static final String MOB_SEARCH_TITLE = ChatColor.DARK_AQUA + "Mob Search";
     private static final String ABILITY_TITLE = ChatColor.DARK_PURPLE + "Mob Ability Cooldowns";
+    private static final String SETTINGS_TITLE = ChatColor.DARK_AQUA + "Mob Hunt Settings";
+    private static final String STATS_TITLE = ChatColor.DARK_GREEN + "Mob Hunt Statistics";
     private static final int HUNTER_HIDE_SECONDS = 15;
     private static final List<String> MOB_TYPES = List.of(
             "PIG", "COW", "SHEEP", "CHICKEN", "WOLF", "CAT", "FOX", "RABBIT", "VILLAGER",
@@ -126,11 +130,16 @@ public final class MobHuntGame implements Listener {
     private int arenaCenterX;
     private int arenaCenterZ;
     private final Set<UUID> searchingMob = new LinkedHashSet<>();
+    private final File statsFile;
+    private final org.bukkit.configuration.file.YamlConfiguration stats;
+    private final Map<UUID, Integer> spectatorTargets = new HashMap<>();
 
     public MobHuntGame(JavaPlugin plugin, Location lobby) {
         this.plugin = plugin;
         this.lobby = lobby.clone();
         this.npcKey = new NamespacedKey(plugin, "nebula_mobhunt_npc");
+        this.statsFile = new File(plugin.getDataFolder(), "mobhunt-stats.yml");
+        this.stats = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(statsFile);
     }
 
     public void enable() {
@@ -185,7 +194,11 @@ public final class MobHuntGame implements Listener {
             case "join", "queue" -> joinQueue(player);
             case "leave", "cancel" -> leaveQueue(player);
             case "status" -> sendStatus(player);
-            default -> player.sendMessage(PREFIX + "Use /mobhunt [join|leave|status].");
+            case "settings" -> openSettings(player);
+            case "stats" -> openStats(player);
+            case "spectate" -> cycleSpectator(player);
+            case "practice" -> openPracticeGuide(player);
+            default -> player.sendMessage(PREFIX + "Use /mobhunt [join|leave|status|settings|stats|spectate|practice].");
         }
     }
 
@@ -421,6 +434,7 @@ public final class MobHuntGame implements Listener {
                     }
                 }
                 updateHunterCompass(active);
+                updateProximityWarnings(active);
                 updateAntiCamping(active);
                 updateLastHiderMode(active);
                 active.secondsLeft--;
@@ -679,6 +693,59 @@ public final class MobHuntGame implements Listener {
     private long abilityCooldown(String mob) {
         return switch (mob) { case "WARDEN", "GHAST", "CREEPER", "IRON_GOLEM" -> 15000L; case "BEE", "SPIDER", "CAVE_SPIDER", "BLAZE" -> 10000L; default -> 8000L; };
     }
+    private void incrementStat(UUID id, String key, int amount) {
+        String path = "players." + id;
+        stats.set(path + ".name", nameOf(id));
+        stats.set(path + "." + key, stats.getInt(path + "." + key, 0) + amount);
+        try { stats.save(statsFile); }
+        catch (IOException ex) { plugin.getLogger().warning("Could not save Mob Hunt stats: " + ex.getMessage()); }
+    }
+
+    private void openStats(Player player) {
+        String path = "players." + player.getUniqueId();
+        Inventory inv = Bukkit.createInventory(null, 27, STATS_TITLE);
+        inv.setItem(10, named(Material.DIAMOND, ChatColor.GREEN + "Match Wins", "Wins: " + stats.getInt(path + ".matchWins", 0)));
+        inv.setItem(12, named(Material.IRON_SWORD, ChatColor.RED + "Eliminations", "Eliminations: " + stats.getInt(path + ".eliminations", 0)));
+        inv.setItem(14, named(Material.CLOCK, ChatColor.AQUA + "Matches Played", "Matches: " + stats.getInt(path + ".matchesPlayed", 0)));
+        inv.setItem(16, named(Material.NETHER_STAR, ChatColor.LIGHT_PURPLE + "Round Wins", "Rounds: " + stats.getInt(path + ".roundWins", 0)));
+        player.openInventory(inv);
+    }
+
+    private void openSettings(Player player) {
+        Inventory inv = Bukkit.createInventory(null, 27, SETTINGS_TITLE);
+        String base = "mobhunt.player-settings." + player.getUniqueId() + ".";
+        boolean particles = plugin.getConfig().getBoolean(base + "particles", true);
+        boolean sounds = plugin.getConfig().getBoolean(base + "sounds", true);
+        inv.setItem(11, named(particles ? Material.GLOWSTONE_DUST : Material.GRAY_DYE, ChatColor.YELLOW + "Ability Particles: " + (particles ? "ON" : "OFF"), "Click to toggle ability particles."));
+        inv.setItem(15, named(sounds ? Material.NOTE_BLOCK : Material.GRAY_DYE, ChatColor.AQUA + "Ability Sounds: " + (sounds ? "ON" : "OFF"), "Click to toggle ability sounds."));
+        inv.setItem(22, named(Material.BARRIER, ChatColor.RED + "Close", "Close settings."));
+        player.openInventory(inv);
+    }
+
+    private void openPracticeGuide(Player player) {
+        Inventory inv = Bukkit.createInventory(null, 27, ChatColor.DARK_PURPLE + "Mob Hunt Practice");
+        inv.setItem(11, named(Material.SPAWNER, ChatColor.GREEN + "Ability Training", "Use /mobhunt join to enter a live test match.", "Abilities are available to hiders during a round.", "Use /mobhunt settings to customize effects."));
+        inv.setItem(15, named(Material.BOOK, ChatColor.AQUA + "Ability Guide", "Spider: automatic wall climb • Warden: sonic pulse", "Iron Golem: slam • Fox: pounce • Bee: sting", "Blaze: flame burst • Villager: escape dash"));
+        player.openInventory(inv);
+    }
+
+    private void cycleSpectator(Player player) {
+        Match active = match;
+        if (active == null || !active.players.contains(player.getUniqueId()) || active.aliveHiders.contains(player.getUniqueId()) || player.getGameMode() != GameMode.SPECTATOR) {
+            player.sendMessage(PREFIX + ChatColor.RED + "Spectator cycling is available after you are eliminated.");
+            return;
+        }
+        List<UUID> targets = new ArrayList<>(active.aliveHiders);
+        if (targets.isEmpty()) { player.sendMessage(PREFIX + "No active hiders to spectate."); return; }
+        int index = (spectatorTargets.getOrDefault(player.getUniqueId(), -1) + 1) % targets.size();
+        spectatorTargets.put(player.getUniqueId(), index);
+        Player target = Bukkit.getPlayer(targets.get(index));
+        if (target != null) {
+            player.setSpectatorTarget(target);
+            player.sendMessage(PREFIX + ChatColor.AQUA + "Spectating " + target.getName() + " • /mobhunt spectate to switch");
+        }
+    }
+
     private void openAbilityGui(Player player) {
         Match active = match;
         if (active == null || !active.aliveHiders.contains(player.getUniqueId())) return;
@@ -776,9 +843,10 @@ public final class MobHuntGame implements Listener {
             }
         }
         if (!mob.equals("WARDEN")) {
-            player.getWorld().spawnParticle(org.bukkit.Particle.ENCHANT, player.getLocation().add(0, 1, 0), 18, 0.5, 0.6, 0.5, 0.25);
+            if (plugin.getConfig().getBoolean("mobhunt.player-settings." + id + ".particles", true)) player.getWorld().spawnParticle(org.bukkit.Particle.ENCHANT, player.getLocation().add(0, 1, 0), 18, 0.5, 0.6, 0.5, 0.25);
             player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.7f, 1.3f);
         }
+        if (plugin.getConfig().getBoolean("mobhunt.player-settings." + id + ".sounds", true)) player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.55f, 1.4f);
         player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
     }
     private boolean usesSwapHands(Player player) {
@@ -820,6 +888,21 @@ public final class MobHuntGame implements Listener {
         player.closeInventory(); useMobAbility(player, active);
     }
 
+    private void updateProximityWarnings(Match active) {
+        Player hunter = Bukkit.getPlayer(active.hunter);
+        if (hunter == null || !hunter.isOnline() || !hunter.getWorld().equals(world)) return;
+        for (UUID id : active.aliveHiders) {
+            Player hider = Bukkit.getPlayer(id);
+            if (hider == null || !hider.isOnline() || !hider.getWorld().equals(world)) continue;
+            double distance = hunter.getLocation().distanceSquared(hider.getLocation());
+            if (distance <= 12.25) {
+                hider.sendActionBar(ChatColor.RED + "" + ChatColor.BOLD + "HUNTER VERY CLOSE!");
+                if (plugin.getConfig().getBoolean("mobhunt.player-settings." + id + ".sounds", true))
+                    hider.playSound(hider.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.35f, 0.65f);
+            } else if (distance <= 100) hider.sendActionBar(ChatColor.GOLD + "Hunter is nearby...");
+        }
+    }
+
     private void updateHunterCompass(Match active) {
         Player hunter = Bukkit.getPlayer(active.hunter);
         if (hunter == null || !hunter.isOnline() || !hunter.getWorld().equals(world)) return;
@@ -840,9 +923,10 @@ public final class MobHuntGame implements Listener {
         active.cancelRoundTasks();
         if (hunterWon) {
             active.scores.merge(active.hunter, 1, Integer::sum);
+            incrementStat(active.hunter, "roundWins", 1);
             broadcastToMatch(active, ChatColor.GOLD + nameOf(active.hunter) + " eliminated every hider and wins the round!");
         } else {
-            for (UUID id : active.aliveHiders) active.scores.merge(id, 1, Integer::sum);
+            for (UUID id : active.aliveHiders) { active.scores.merge(id, 1, Integer::sum); incrementStat(id, "roundWins", 1); }
             broadcastToMatch(active, ChatColor.GREEN + "Time is up! Every hider who stayed hidden earns a point.");
         }
         for (UUID id : active.players) {
@@ -873,6 +957,8 @@ public final class MobHuntGame implements Listener {
         List<UUID> winners = active.scores.entrySet().stream()
                 .filter(entry -> entry.getValue() == high).map(Map.Entry::getKey).toList();
         String winnerNames = winners.stream().map(this::nameOf).collect(Collectors.joining(", "));
+        for (UUID id : active.players) incrementStat(id, "matchesPlayed", 1);
+        for (UUID id : winners) incrementStat(id, "matchWins", 1);
         broadcastToMatch(active, ChatColor.GOLD + "" + ChatColor.BOLD + "MOB HUNT WINNER: "
                 + ChatColor.YELLOW + (winnerNames.isBlank() ? "No winner" : winnerNames)
                 + ChatColor.GRAY + " • " + high + " point(s)");
@@ -975,7 +1061,20 @@ public final class MobHuntGame implements Listener {
 
     @EventHandler
     public void onMenuClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player) || !event.getView().getTitle().equals(MENU_TITLE)) return;
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        String title = event.getView().getTitle();
+        if (title.equals(SETTINGS_TITLE)) {
+            event.setCancelled(true);
+            String base = "mobhunt.player-settings." + player.getUniqueId() + ".";
+            if (event.getRawSlot() == 11) plugin.getConfig().set(base + "particles", !plugin.getConfig().getBoolean(base + "particles", true));
+            else if (event.getRawSlot() == 15) plugin.getConfig().set(base + "sounds", !plugin.getConfig().getBoolean(base + "sounds", true));
+            else if (event.getRawSlot() == 22) { player.closeInventory(); return; }
+            plugin.saveConfig();
+            openSettings(player);
+            return;
+        }
+        if (title.equals(STATS_TITLE) || title.equals(ChatColor.DARK_PURPLE + "Mob Hunt Practice")) { event.setCancelled(true); return; }
+        if (!title.equals(MENU_TITLE)) return;
         event.setCancelled(true);
         int slot = event.getRawSlot();
         if (slot == 11) {
@@ -1076,6 +1175,7 @@ public final class MobHuntGame implements Listener {
             }
         }
         broadcastToMatch(active, ChatColor.RED + (killer == null ? player.getName() : killer.getName()) + ChatColor.GRAY + " eliminated " + ChatColor.YELLOW + player.getName() + ChatColor.GRAY + cause + "!");
+        if (killer != null && active.players.contains(killer.getUniqueId())) incrementStat(killer.getUniqueId(), "eliminations", 1);
         UUID id = player.getUniqueId();
         if (id.equals(active.hunter)) {
             active.hunterLives--;
