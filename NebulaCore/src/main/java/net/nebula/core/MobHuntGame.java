@@ -294,6 +294,7 @@ public final class MobHuntGame implements Listener {
     private void startRound(Match active) {
         if (match != active || active.ending) return;
         active.round++;
+        active.roundEnded = false;
         if (active.round > ROUNDS) {
             finishMatch(active);
             return;
