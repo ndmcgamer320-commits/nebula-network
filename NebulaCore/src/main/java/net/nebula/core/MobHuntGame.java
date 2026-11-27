@@ -1144,8 +1144,6 @@ public final class MobHuntGame implements Listener {
         player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
         player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.7f, 1.5f);
     }
-        player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
-    }
     @EventHandler
     public void onAbilityItem(PlayerInteractEvent event) {
         ItemStack item = event.getItem();
