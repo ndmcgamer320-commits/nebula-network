@@ -810,15 +810,52 @@ public final class MobHuntGame implements Listener {
             player.setFlying(false);
             player.setWalkSpeed(0.2f);
             player.setFlySpeed(0.1f);
-            PlayerSnapshot snapshot = active.snapshots.get(id);
-            if (snapshot != null) snapshot.restoreAtLobby(player, lobby, plugin);
-            else player.teleport(lobby);
-            player.updateInventory();
+            if (plugin instanceof NebulaCore core) {
+                // Use the network's single lobby-return path so every player gets
+                // the same compass/clock loadout and refreshed HUD after every match.
+                core.returnPlayerToLobby(player);
+            } else {
+                PlayerSnapshot snapshot = active.snapshots.get(id);
+                if (snapshot != null) snapshot.restoreAtLobby(player, lobby, plugin);
+                else player.teleport(lobby);
+                player.updateInventory();
+            }
             player.sendTitle(ChatColor.GOLD + "MOB HUNT OVER",
                     ChatColor.GRAY + "Winner: " + (winnerNames.isBlank() ? "No winner" : winnerNames), 5, 70, 15);
         }
         active.ending = true;
         match = null;
+        regenerateVillageArena();
+    }
+
+    private void regenerateVillageArena() {
+        if (world == null) return;
+        // Players have already been returned to the lobby. Recreate the 11x11
+        // chunk arena from its fixed world seed, restoring broken/placed blocks.
+        List<int[]> chunks = new ArrayList<>();
+        int centerChunkX = arenaCenterX >> 4;
+        int centerChunkZ = arenaCenterZ >> 4;
+        for (int x = centerChunkX - 5; x <= centerChunkX + 5; x++) {
+            for (int z = centerChunkZ - 5; z <= centerChunkZ + 5; z++) {
+                chunks.add(new int[]{x, z});
+            }
+        }
+        new BukkitRunnable() {
+            private int index = 0;
+            @Override public void run() {
+                if (world == null || !world.getPlayers().isEmpty()) {
+                    cancel();
+                    return;
+                }
+                if (index >= chunks.size()) {
+                    cancel();
+                    plugin.getLogger().info("Mob Hunt village arena regenerated from its fixed seed.");
+                    return;
+                }
+                int[] chunk = chunks.get(index++);
+                world.regenerateChunk(chunk[0], chunk[1]);
+            }
+        }.runTaskTimer(plugin, 2L, 1L);
     }
 
     private void abortMatch(Match active, String reason) {
