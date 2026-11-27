@@ -427,10 +427,15 @@ public final class MobHuntGame implements Listener {
                 for (UUID id : active.players) {
                     Player p = Bukkit.getPlayer(id);
                     if (p != null && p.isOnline()) {
-                        p.sendActionBar(ChatColor.LIGHT_PURPLE + "ROUND " + active.round + "/" + ROUNDS
-                                + ChatColor.GRAY + " • " + ChatColor.WHITE + active.secondsLeft + "s left"
-                                + ChatColor.GRAY + " • Hiders: " + ChatColor.AQUA + active.aliveHiders.size()
-                                + ChatColor.GRAY + " • Hunter lives: " + ChatColor.RED + active.hunterLives);
+                        if (active.mobPickPending.contains(id)) {
+                            int remaining = Math.max(0, (int) Math.ceil((active.mobPickTask == null ? 0L : active.mobPickTask.getTaskId()) / 20.0));
+                            p.sendActionBar(ChatColor.GREEN + "CHOOSE YOUR MOB • " + MOB_PICK_SECONDS + " seconds");
+                        } else {
+                            p.sendActionBar(ChatColor.LIGHT_PURPLE + "ROUND " + active.round + "/" + ROUNDS
+                                    + ChatColor.GRAY + " • " + ChatColor.WHITE + active.secondsLeft + "s left"
+                                    + ChatColor.GRAY + " • Hiders: " + ChatColor.AQUA + active.aliveHiders.size()
+                                    + ChatColor.GRAY + " • Hunter lives: " + ChatColor.RED + active.hunterLives);
+                        }
                     }
                 }
                 updateHunterCompass(active);
@@ -587,15 +592,29 @@ public final class MobHuntGame implements Listener {
         Inventory inv = Bukkit.createInventory(null, 54, MOB_PICK_TITLE);
         int slot = 0;
         for (String mob : MOB_TYPES) {
-            if (!filter.isBlank() && !mob.toLowerCase().contains(filter.toLowerCase())) continue;
+            if (!matchesMobFilter(mob, filter)) continue;
             Material icon;
             try { icon = Material.valueOf(mob + "_SPAWN_EGG"); } catch (IllegalArgumentException ex) { icon = Material.PAPER; }
             if (slot >= 45) break;
             inv.setItem(slot++, named(icon, ChatColor.GREEN + pretty(mob), "Click to choose this mob", "Mob abilities apply automatically"));
         }
-        inv.setItem(49, named(Material.COMPASS, ChatColor.AQUA + "Search mobs", "Click, then type a mob name in chat", "Current filter: " + (filter.isBlank() ? "none" : filter)));
+        inv.setItem(45, named(Material.GRASS_BLOCK, ChatColor.GREEN + "Passive", "Show peaceful and neutral mobs"));
+        inv.setItem(46, named(Material.IRON_SWORD, ChatColor.RED + "Hostile", "Show hostile mobs"));
+        inv.setItem(47, named(Material.NETHER_STAR, ChatColor.LIGHT_PURPLE + "Special", "Show rare and utility mobs"));
+        inv.setItem(48, named(Material.CHEST, ChatColor.YELLOW + "All Mobs", "Show the full mob list"));
+        inv.setItem(49, named(Material.COMPASS, ChatColor.AQUA + "Search mobs", "Click, then type a mob name in chat", "Current filter: " + (filter.isBlank() ? "all mobs" : filter)));
         inv.setItem(53, named(Material.BARRIER, ChatColor.RED + "Random mob", "Choose a random mob"));
         player.openInventory(inv);
+    }
+
+    private boolean matchesMobFilter(String mob, String filter) {
+        if (filter == null || filter.isBlank() || filter.equalsIgnoreCase("all")) return true;
+        String value = mob.toLowerCase(java.util.Locale.ROOT);
+        String f = filter.toLowerCase(java.util.Locale.ROOT);
+        if (f.equals("passive")) return !Set.of("CREEPER","ZOMBIE","HUSK","DROWNED","SKELETON","STRAY","SPIDER","CAVE_SPIDER","ENDERMAN","BLAZE","PHANTOM","WARDEN","SILVERFISH","ENDERMITE","PILLAGER","VINDICATOR","EVOKER","HOGLIN","BOGGED","MAGMA_CUBE","GHAST").contains(mob);
+        if (f.equals("hostile")) return Set.of("CREEPER","ZOMBIE","HUSK","DROWNED","SKELETON","STRAY","SPIDER","CAVE_SPIDER","ENDERMAN","BLAZE","PHANTOM","WARDEN","SILVERFISH","ENDERMITE","PILLAGER","VINDICATOR","EVOKER","HOGLIN","BOGGED","MAGMA_CUBE","GHAST").contains(mob);
+        if (f.equals("special")) return Set.of("WARDEN","ALLAY","BREEZE","SHULKER","SNIFFER","SNIFFER","ARMADILLO","CAMEL","MOOSHROOM","STRIDER","GOAT","AXOLOTL","DOLPHIN").contains(mob);
+        return value.contains(f);
     }
     @EventHandler
     public void onMobPickerClick(InventoryClickEvent event) {
@@ -604,6 +623,11 @@ public final class MobHuntGame implements Listener {
         Match active = match;
         if (active == null || active.roundEnded || !active.mobPickPending.contains(player.getUniqueId())) return;
         int slot = event.getRawSlot();
+        if (slot == 45 || slot == 46 || slot == 47 || slot == 48) {
+            String category = slot == 45 ? "passive" : slot == 46 ? "hostile" : slot == 47 ? "special" : "";
+            openMobPicker(player, category);
+            return;
+        }
         if (slot == 49) {
             searchingMob.add(player.getUniqueId());
             player.closeInventory();
