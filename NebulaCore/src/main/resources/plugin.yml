@@ -10,6 +10,8 @@ depend:
   - Multiverse-Core
   - Multiverse-Inventories
   - VoidWorldGenerator
+softdepend:
+  - LibsDisguises
 commands:
   spawn:
     description: Return to the Nebula lobby.
