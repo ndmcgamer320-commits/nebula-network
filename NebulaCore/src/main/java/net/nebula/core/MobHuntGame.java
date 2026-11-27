@@ -15,6 +15,7 @@ import org.bukkit.World;
 import org.bukkit.WorldBorder;
 import org.bukkit.WorldCreator;
 import org.bukkit.WorldType;
+import org.bukkit.generator.structure.Structure;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -41,6 +42,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.Inventory;
@@ -115,6 +117,8 @@ public final class MobHuntGame implements Listener {
     private Match match;
     private boolean ready;
     private int arenaBaseY;
+    private int arenaCenterX;
+    private int arenaCenterZ;
     private final Set<UUID> searchingMob = new LinkedHashSet<>();
 
     public MobHuntGame(JavaPlugin plugin, Location lobby) {
@@ -132,8 +136,9 @@ public final class MobHuntGame implements Listener {
         world = Bukkit.getWorld(WORLD_NAME);
         if (world == null) {
             WorldCreator creator = new WorldCreator(WORLD_NAME);
-            creator.type(WorldType.FLAT);
-            creator.generateStructures(false);
+            creator.type(WorldType.NORMAL);
+            creator.seed(8675309123456789L);
+            creator.generateStructures(true);
             world = Bukkit.createWorld(creator);
         }
         if (world == null) {
@@ -427,7 +432,7 @@ public final class MobHuntGame implements Listener {
         player.setFlying(false);
         player.setWalkSpeed(0.2f);
         player.setFlySpeed(0.1f);
-        player.setGameMode(GameMode.ADVENTURE);
+        player.setGameMode(GameMode.SURVIVAL);
         player.setFallDistance(0);
         player.setFireTicks(0);
         player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
@@ -701,13 +706,30 @@ public final class MobHuntGame implements Listener {
         }
         player.sendMessage(PREFIX + ChatColor.GREEN + abilityName(mob) + " used!");
     }
+    private boolean usesSwapHands(Player player) {
+        return plugin.getConfig().getString("player-settings." + player.getUniqueId() + ".mobhunt-ability-trigger", "SWAP_HANDS")
+                .equalsIgnoreCase("SWAP_HANDS");
+    }
+
+    @EventHandler
+    public void onAbilityKey(PlayerSwapHandItemsEvent event) {
+        Player player = event.getPlayer();
+        Match active = match;
+        if (active == null || !active.aliveHiders.contains(player.getUniqueId()) || !usesSwapHands(player)) return;
+        event.setCancelled(true);
+        useMobAbility(player, active);
+    }
+
     @EventHandler
     public void onAbilityItem(PlayerInteractEvent event) {
         ItemStack item = event.getItem();
-        if (item == null || !item.hasItemMeta() || !ChatColor.stripColor(item.getItemMeta().getDisplayName()).equals("Mob Ability")) return;
+        if (item == null || !item.hasItemMeta() || item.getItemMeta().getDisplayName() == null
+                || !ChatColor.stripColor(item.getItemMeta().getDisplayName()).equals("Mob Ability")) return;
         Match active = match;
         if (active == null || !active.aliveHiders.contains(event.getPlayer().getUniqueId())) return;
-        event.setCancelled(true); openAbilityGui(event.getPlayer());
+        event.setCancelled(true);
+        if (usesSwapHands(event.getPlayer())) openAbilityGui(event.getPlayer());
+        else useMobAbility(event.getPlayer(), active);
     }
     @EventHandler
     public void onAbilityGuiClick(InventoryClickEvent event) {
@@ -783,7 +805,6 @@ public final class MobHuntGame implements Listener {
             player.sendTitle(ChatColor.GOLD + "MOB HUNT OVER",
                     ChatColor.GRAY + "Winner: " + (winnerNames.isBlank() ? "No winner" : winnerNames), 5, 70, 15);
         }
-        buildVillage();
         active.ending = true;
         match = null;
     }
@@ -812,14 +833,18 @@ public final class MobHuntGame implements Listener {
     }
 
     private Location randomVillageSpawn() {
-        int[][] spots = {
-                {-23, -23}, {23, -23}, {-23, 23}, {23, 23},
-                {-10, -28}, {10, 28}, {-28, 10}, {28, -10},
-                {0, -30}, {30, 0}, {0, 30}, {-30, 0}
-        };
-        int[] spot = spots[random.nextInt(spots.length)];
-        int y = world.getHighestBlockYAt(spot[0], spot[1]) + 1;
-        return new Location(world, spot[0] + 0.5, y, spot[1] + 0.5);
+        for (int attempt = 0; attempt < 40; attempt++) {
+            int x = arenaCenterX + random.nextInt(73) - 36;
+            int z = arenaCenterZ + random.nextInt(73) - 36;
+            int y = world.getHighestBlockYAt(x, z) + 1;
+            Block floor = world.getBlockAt(x, y - 1, z);
+            if (floor.getType().isSolid() && !floor.isLiquid()
+                    && world.getBlockAt(x, y, z).isEmpty()
+                    && world.getBlockAt(x, y + 1, z).isEmpty()) {
+                return new Location(world, x + 0.5, y, z + 0.5);
+            }
+        }
+        return new Location(world, arenaCenterX + 0.5, arenaBaseY + 1.0, arenaCenterZ + 0.5);
     }
 
     @EventHandler
@@ -931,16 +956,6 @@ public final class MobHuntGame implements Listener {
     }
 
     @EventHandler
-    public void onArenaBuildProtection(BlockBreakEvent event) {
-        if (isMatchPlayer(event.getPlayer()) && event.getBlock().getWorld().equals(world)) event.setCancelled(true);
-    }
-
-    @EventHandler
-    public void onArenaPlaceProtection(BlockPlaceEvent event) {
-        if (isMatchPlayer(event.getPlayer()) && event.getBlock().getWorld().equals(world)) event.setCancelled(true);
-    }
-
-    @EventHandler
     public void onDrop(PlayerDropItemEvent event) {
         if (isMatchPlayer(event.getPlayer())) event.setCancelled(true);
     }
@@ -1023,95 +1038,29 @@ public final class MobHuntGame implements Listener {
         world.setGameRule(GameRule.DO_WEATHER_CYCLE, false);
         world.setGameRule(GameRule.DO_MOB_SPAWNING, false);
         world.setGameRule(GameRule.KEEP_INVENTORY, true);
-        int base = Math.max(world.getMinHeight() + 4, world.getHighestBlockYAt(0, 0));
-        arenaBaseY = base;
-        for (int x = -48; x <= 48; x++) {
-            for (int z = -48; z <= 48; z++) {
-                world.getBlockAt(x, base, z).setType(Material.GRASS_BLOCK, false);
-                world.getBlockAt(x, base - 1, z).setType(Material.DIRT, false);
-                world.getBlockAt(x, base - 2, z).setType(Material.STONE, false);
-                for (int y = base + 1; y <= base + 16; y++) world.getBlockAt(x, y, z).setType(Material.AIR, false);
-                if (Math.abs(x) <= 3 || Math.abs(z) <= 3) {
-                    world.getBlockAt(x, base, z).setType(Material.DIRT_PATH, false);
-                }
-            }
+
+        // Use a genuine vanilla-generated village in a normal overworld, not a
+        // plugin-built collection of placeholder houses. The workflow recreates
+        // this world from the fixed seed on each server start.
+        Location origin = new Location(world, 0, 80, 0);
+        Location village = world.locateNearestStructure(origin, Structure.VILLAGE, 64, false);
+        if (village == null) {
+            throw new IllegalStateException("No vanilla village found near the Mob Hunt seed; refusing to build a fake village.");
         }
-        buildHouse(-22, -22, base);
-        buildHouse(22, -22, base);
-        buildHouse(-22, 22, base);
-        buildHouse(22, 22, base);
-        buildHouse(-32, 0, base);
-        buildHouse(32, 0, base);
-        buildWell(base);
-        buildMarket(base);
-        world.setSpawnLocation(0, base + 1, 0);
+        arenaCenterX = village.getBlockX();
+        arenaCenterZ = village.getBlockZ();
+        world.getChunkAt(arenaCenterX >> 4, arenaCenterZ >> 4).load(true);
+        arenaBaseY = world.getHighestBlockYAt(arenaCenterX, arenaCenterZ);
+        world.setSpawnLocation(arenaCenterX, arenaBaseY + 1, arenaCenterZ);
+
         WorldBorder border = world.getWorldBorder();
-        border.setCenter(0.5, 0.5);
-        border.setSize(92.0);
+        border.setCenter(arenaCenterX + 0.5, arenaCenterZ + 0.5);
+        border.setSize(160.0);
         border.setDamageBuffer(0.0);
         border.setDamageAmount(0.0);
-        border.setWarningDistance(5);
-    }
-
-    private void buildHouse(int cx, int cz, int base) {
-        int half = 4;
-        for (int x = cx - half; x <= cx + half; x++) {
-            for (int z = cz - half; z <= cz + half; z++) {
-                world.getBlockAt(x, base, z).setType(Material.OAK_PLANKS, false);
-                for (int y = base + 1; y <= base + 5; y++) {
-                    boolean wall = x == cx - half || x == cx + half || z == cz - half || z == cz + half;
-                    if (wall) world.getBlockAt(x, y, z).setType(Material.OAK_PLANKS, false);
-                    else world.getBlockAt(x, y, z).setType(Material.AIR, false);
-                }
-                world.getBlockAt(x, base + 6, z).setType(Material.DARK_OAK_PLANKS, false);
-            }
-        }
-        for (int y = base + 1; y <= base + 2; y++) {
-            world.getBlockAt(cx - half, y, cz).setType(Material.GLASS_PANE, false);
-            world.getBlockAt(cx + half, y, cz).setType(Material.GLASS_PANE, false);
-            world.getBlockAt(cx, y, cz - half).setType(Material.GLASS_PANE, false);
-            world.getBlockAt(cx, y, cz + half).setType(Material.GLASS_PANE, false);
-        }
-        world.getBlockAt(cx, base + 1, cz - half).setType(Material.AIR, false);
-        world.getBlockAt(cx, base + 2, cz - half).setType(Material.AIR, false);
-        world.getBlockAt(cx - 1, base + 1, cz - half).setType(Material.OAK_DOOR, false);
-        world.getBlockAt(cx + 1, base + 1, cz - half).setType(Material.OAK_DOOR, false);
-        world.getBlockAt(cx, base + 3, cz).setType(Material.LANTERN, false);
-        world.getBlockAt(cx - 3, base + 7, cz - 3).setType(Material.OAK_FENCE, false);
-        world.getBlockAt(cx + 3, base + 7, cz + 3).setType(Material.OAK_FENCE, false);
-    }
-
-    private void buildWell(int base) {
-        for (int x = -3; x <= 3; x++) {
-            for (int z = -3; z <= 3; z++) {
-                if (Math.abs(x) == 3 || Math.abs(z) == 3) {
-                    world.getBlockAt(x, base + 1, z).setType(Material.COBBLESTONE_WALL, false);
-                    world.getBlockAt(x, base + 2, z).setType(Material.OAK_FENCE, false);
-                } else {
-                    world.getBlockAt(x, base + 1, z).setType(Material.WATER, false);
-                }
-            }
-        }
-        world.getBlockAt(0, base + 2, 0).setType(Material.WATER, false);
-        world.getBlockAt(0, base + 3, 0).setType(Material.LANTERN, false);
-        world.getBlockAt(-3, base + 3, 0).setType(Material.OAK_FENCE, false);
-        world.getBlockAt(3, base + 3, 0).setType(Material.OAK_FENCE, false);
-        world.getBlockAt(0, base + 3, -3).setType(Material.OAK_FENCE, false);
-        world.getBlockAt(0, base + 3, 3).setType(Material.OAK_FENCE, false);
-    }
-
-    private void buildMarket(int base) {
-        for (int x = -7; x <= 7; x++) {
-            for (int z = -7; z <= 7; z++) {
-                if (Math.abs(x) == 7 || Math.abs(z) == 7) world.getBlockAt(x, base + 1, z).setType(Material.OAK_FENCE, false);
-            }
-        }
-        for (int x = -6; x <= 6; x++) world.getBlockAt(x, base + 4, -7).setType(Material.RED_WOOL, false);
-        for (int x = -6; x <= 6; x++) world.getBlockAt(x, base + 4, 7).setType(Material.WHITE_WOOL, false);
-        for (int x = -5; x <= 5; x++) {
-            world.getBlockAt(x, base + 3, -7).setType(Material.OAK_FENCE, false);
-            world.getBlockAt(x, base + 3, 7).setType(Material.OAK_FENCE, false);
-        }
+        border.setWarningDistance(8);
+        plugin.getLogger().info("Using naturally generated Minecraft village at "
+                + arenaCenterX + ", " + arenaCenterZ + " in seed " + world.getSeed());
     }
 
     private static final class Match {
