@@ -583,7 +583,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         }
         if (section.equals("all") || section.equals("arena")) {
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "ARENA: " + ChatColor.GRAY
-                    + "/bedwars, /duel, /duel queue, /duel bot, /duel player");
+                    + "/bedwars, /duel, /duel queue, /duel bot");
             sender.sendMessage(ChatColor.GRAY + "  Arena worlds: bedwars_1 and duel_arena");
         }
         if (section.equals("all") || section.equals("ranks")) {
