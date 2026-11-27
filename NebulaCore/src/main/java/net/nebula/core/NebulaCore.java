@@ -52,6 +52,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     private NebulaGames games;
     private NebulaHud hud;
     private NebulaNetworkFeatures networkFeatures;
+    private final Map<UUID, UUID> lastMessaged = new HashMap<>();
     private File lastSurvivalFile;
     private YamlConfiguration lastSurvival;
     private static final String PREFIX = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA " + ChatColor.LIGHT_PURPLE + "» " + ChatColor.GRAY;
@@ -419,11 +420,13 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     }
 
     private void openSettings(Player player) {
-        Inventory inv = Bukkit.createInventory(null, 27, SETTINGS_TITLE);
+        Inventory inv = Bukkit.createInventory(null, 45, SETTINGS_TITLE);
         boolean nameTags = getPlayerSetting(player, "nametags", true);
         boolean hidden = playersHidden.getOrDefault(player.getUniqueId(), false);
         boolean particles = getPlayerSetting(player, "lobby-particles", true);
         boolean sounds = getPlayerSetting(player, "menu-sounds", true);
+        boolean sidebar = getPlayerSetting(player, "scoreboard", true);
+        boolean privateMessages = getPlayerSetting(player, "private-messages", true);
         inv.setItem(10, item(nameTags ? Material.NAME_TAG : Material.PAPER,
                 "Player Name Tags: " + (nameTags ? "ON" : "OFF"), List.of("Show or hide player names above heads")));
         inv.setItem(11, item(hidden ? Material.GRAY_DYE : Material.LIME_DYE,
@@ -432,9 +435,14 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 "Lobby Particles: " + (particles ? "ON" : "OFF"), List.of("Toggle decorative lobby particles")));
         inv.setItem(13, item(sounds ? Material.NOTE_BLOCK : Material.BARRIER,
                 "Menu Sounds: " + (sounds ? "ON" : "OFF"), List.of("Toggle menu click sounds")));
-        inv.setItem(15, item(Material.ENDER_PEARL, "Random Teleport", List.of("Use /rtp in Survival")));
+        inv.setItem(14, item(sidebar ? Material.MAP : Material.PAPER,
+                "Sidebar Scoreboard: " + (sidebar ? "ON" : "OFF"), List.of("Show or hide your network sidebar")));
+        inv.setItem(15, item(privateMessages ? Material.WRITABLE_BOOK : Material.BARRIER,
+                "Private Messages: " + (privateMessages ? "ON" : "OFF"), List.of("Allow or block incoming /tell messages")));
+        inv.setItem(16, item(Material.ENDER_PEARL, "Random Teleport", List.of("Use /rtp in Survival")));
         inv.setItem(17, item(Material.COMPASS, "Game Selector", List.of("Open the network game menu")));
-        inv.setItem(22, item(Material.BARRIER, "Close", List.of("Close settings")));
+        inv.setItem(31, item(Material.PLAYER_HEAD, "My Network Profile", List.of("View /profile and your network stats")));
+        inv.setItem(40, item(Material.BARRIER, "Close", List.of("Close settings")));
         player.openInventory(inv);
     }
 
@@ -483,12 +491,27 @@ public final class NebulaCore extends JavaPlugin implements Listener {
             setPlayerSetting(p, "menu-sounds", enabled);
             if (enabled) playSettingsSound(p);
             openSettings(p);
+        } else if (slot == 14) {
+            boolean enabled = !getPlayerSetting(p, "scoreboard", true);
+            setPlayerSetting(p, "scoreboard", enabled);
+            if (hud != null) hud.setSidebarVisible(p, enabled);
+            playSettingsSound(p);
+            openSettings(p);
         } else if (slot == 15) {
+            boolean enabled = !getPlayerSetting(p, "private-messages", true);
+            setPlayerSetting(p, "private-messages", enabled);
+            p.sendMessage(PREFIX + "Private messages: " + (enabled ? "ON" : "OFF"));
+            playSettingsSound(p);
+            openSettings(p);
+        } else if (slot == 16) {
             p.closeInventory();
             p.performCommand("rtp");
         } else if (slot == 17) {
             playSettingsSound(p);
             openMenu(p);
+        } else if (slot == 31) {
+            p.closeInventory();
+            p.performCommand("profile");
         } else p.closeInventory();
     }
 
@@ -599,8 +622,60 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         getLogger().info(sender.getName() + " cleared " + removed + " dropped item entities.");
     }
 
+
+    private boolean handlePrivateMessage(CommandSender sender, String commandName, String[] args) {
+        if (!(sender instanceof Player from)) {
+            sender.sendMessage("Players only.");
+            return true;
+        }
+        Player target;
+        int messageStart;
+        if (commandName.equals("reply")) {
+            UUID last = lastMessaged.get(from.getUniqueId());
+            target = last == null ? null : Bukkit.getPlayer(last);
+            messageStart = 0;
+            if (target == null) {
+                from.sendMessage(PREFIX + ChatColor.RED + "Nobody to reply to.");
+                return true;
+            }
+        } else {
+            if (args.length < 2) {
+                from.sendMessage(PREFIX + "Usage: /tell <player> <message> or /r <message>");
+                return true;
+            }
+            target = Bukkit.getPlayerExact(args[0]);
+            messageStart = 1;
+            if (target == null) {
+                from.sendMessage(PREFIX + ChatColor.RED + "That player is not online.");
+                return true;
+            }
+        }
+        if (target.equals(from)) {
+            from.sendMessage(PREFIX + ChatColor.RED + "You cannot message yourself.");
+            return true;
+        }
+        if (!getPlayerSetting(target, "private-messages", true)) {
+            from.sendMessage(PREFIX + ChatColor.RED + "That player has private messages disabled.");
+            return true;
+        }
+        String message = String.join(" ", java.util.Arrays.copyOfRange(args, messageStart, args.length)).trim();
+        if (message.isEmpty()) {
+            from.sendMessage(PREFIX + "Message cannot be empty.");
+            return true;
+        }
+        lastMessaged.put(from.getUniqueId(), target.getUniqueId());
+        lastMessaged.put(target.getUniqueId(), from.getUniqueId());
+        target.sendMessage(ChatColor.DARK_PURPLE + "[MSG] " + ChatColor.LIGHT_PURPLE + from.getName()
+                + ChatColor.GRAY + " → " + ChatColor.WHITE + message);
+        from.sendMessage(ChatColor.DARK_PURPLE + "[MSG] " + ChatColor.LIGHT_PURPLE + "You → "
+                + target.getName() + ChatColor.GRAY + ": " + ChatColor.WHITE + message);
+        return true;
+    }
+
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (java.util.Set.of("stats", "leaderboard", "sus").contains(command.getName().toLowerCase(java.util.Locale.ROOT))) {
+        String commandName = command.getName().toLowerCase(java.util.Locale.ROOT);
+        if (java.util.Set.of("msg", "reply").contains(commandName)) return handlePrivateMessage(sender, commandName, args);
+        if (java.util.Set.of("stats", "leaderboard", "sus", "profile").contains(commandName)) {
             return networkFeatures.handleCommand(sender, command.getName(), args);
         }
         if (command.getName().equalsIgnoreCase("setlobby")) {
