@@ -95,6 +95,30 @@ jobs:
           jar tf plugins/Citizens-2.0.41.jar | grep -q "plugin.yml"
           echo "Citizens installed for player-model lobby NPCs."
 
+      - name: Install player disguise dependencies
+        run: |
+          set -euo pipefail
+          mkdir -p plugins
+          curl -fL --retry 3 \
+            "https://github.com/libraryaddict/LibsDisguises/releases/download/v11.0.18/LibsDisguises-11.0.18-Github.jar" \
+            -o plugins/LibsDisguises-11.0.18.jar
+
+          PE_VERSIONS=$(curl -fsSL -G \
+            --data-urlencode 'game_versions=["1.21.11"]' \
+            --data-urlencode 'loaders=["paper"]' \
+            https://api.modrinth.com/v2/project/packetevents/version)
+          PE_URL=$(echo "$PE_VERSIONS" | jq -r 'first(.[] | select(.version_number == "2.11.1+spigot") | .files[] | select(.primary == true) | .url) // "null"')
+          if [ "$PE_URL" = "null" ]; then
+            echo "::error::Could not find PacketEvents 2.11.1 for Paper."
+            exit 1
+          fi
+          curl -fL --retry 3 "$PE_URL" -o plugins/packetevents-2.11.1.jar
+          for jar in plugins/LibsDisguises-11.0.18.jar plugins/packetevents-2.11.1.jar; do
+            test -s "$jar"
+            jar tf "$jar" | grep -q "plugin.yml"
+            echo "Verified $jar"
+          done
+
       - name: Install authentication, world management and anti-cheat plugins
         run: |
           set -euo pipefail
