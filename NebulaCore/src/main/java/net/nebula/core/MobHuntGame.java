@@ -1162,7 +1162,26 @@ public final class MobHuntGame implements Listener {
             plugin.getConfig().set(path + ".matches", plugin.getConfig().getInt(path + ".matches", 0) + 1);
             plugin.getConfig().set(path + ".points", plugin.getConfig().getInt(path + ".points", 0) + points);
             plugin.getConfig().set(path + ".best-points", Math.max(points, plugin.getConfig().getInt(path + ".best-points", 0)));
+            plugin.getConfig().set(path + ".kills", plugin.getConfig().getInt(path + ".kills", 0) + active.kills.getOrDefault(id, 0));
+            plugin.getConfig().set(path + ".survival-seconds", plugin.getConfig().getInt(path + ".survival-seconds", 0) + active.survivalSeconds.getOrDefault(id, 0));
+            if (winners.contains(id)) plugin.getConfig().set(path + ".wins", plugin.getConfig().getInt(path + ".wins", 0) + 1);
+            ConfigurationSection mobUses = plugin.getConfig().getConfigurationSection(path + ".mob-uses");
+            if (mobUses != null && !mobUses.getKeys(false).isEmpty()) {
+                String favorite = mobUses.getKeys(false).stream().max(Comparator.comparingInt(mobUses::getInt)).orElse("N/A");
+                plugin.getConfig().set(path + ".favorite-mob", pretty(favorite));
+            }
+            Player online = Bukkit.getPlayer(id);
+            if (online != null && online.isOnline()) {
+                PlayerSnapshot snapshot = active.snapshots.get(id);
+                if (snapshot != null) snapshot.restoreAtLobby(online, lobby); else online.teleport(lobby);
+                clearRecovery(id);
+                online.sendTitle(ChatColor.GOLD + "MOB HUNT OVER",
+                        ChatColor.GRAY + "Winner: " + (winnerNames.isBlank() ? "No winner" : winnerNames), 5, 70, 15);
+            }
         }
+        saveMatchHistory(active, winnerNames);
+        for (BukkitTask task : active.disconnectTasks.values()) task.cancel();
+        active.disconnectTasks.clear();
         plugin.saveConfig();
         broadcastToMatch(active, ChatColor.GOLD + "" + ChatColor.BOLD + "MOB HUNT WINNER: "
                 + ChatColor.YELLOW + (winnerNames.isBlank() ? "No winner" : winnerNames)
@@ -1171,12 +1190,8 @@ public final class MobHuntGame implements Listener {
             Player player = Bukkit.getPlayer(id);
             if (player == null || !player.isOnline()) continue;
             DisguiseAPI.undisguiseToAll(player);
-            PlayerSnapshot snapshot = active.snapshots.get(id);
-            if (snapshot != null) snapshot.restoreAtLobby(player, lobby);
-            else player.teleport(lobby);
-            player.sendTitle(ChatColor.GOLD + "MOB HUNT OVER",
-                    ChatColor.GRAY + "Winner: " + (winnerNames.isBlank() ? "No winner" : winnerNames), 5, 70, 15);
         }
+        logMatch("END", active, "winners=" + winnerNames + ", scores=" + scoreLine(active));
         buildVillage();
         active.ending = true;
         match = null;
@@ -1293,6 +1308,18 @@ public final class MobHuntGame implements Listener {
         }
         broadcastToMatch(active, ChatColor.RED + (killer == null ? player.getName() : killer.getName()) + ChatColor.GRAY + " eliminated " + ChatColor.YELLOW + player.getName() + ChatColor.GRAY + cause + "!");
         UUID id = player.getUniqueId();
+        if (killer != null && !killer.getUniqueId().equals(id) && active.players.contains(killer.getUniqueId())) {
+            UUID killerId = killer.getUniqueId();
+            active.kills.merge(killerId, 1, Integer::sum);
+            if (killerId.equals(active.hunter) && !id.equals(active.hunter)) {
+                active.hunterKillStreak++;
+                if (Set.of(2, 3, 5, 7).contains(active.hunterKillStreak)) {
+                    broadcastToMatch(active, ChatColor.GOLD + "" + ChatColor.BOLD + "HUNTER STREAK: "
+                            + ChatColor.YELLOW + active.hunterKillStreak + " eliminations!");
+                }
+            } else if (id.equals(active.hunter)) active.hunterKillStreak = 0;
+        }
+        logMatch("ELIMINATION", active, "victim=" + player.getName() + ", killer=" + (killer == null ? "environment" : killer.getName()) + cause);
         if (id.equals(active.hunter)) {
             active.hunterLives--;
             if (active.hunterLives <= 0) endRound(active, false);
@@ -1353,18 +1380,24 @@ public final class MobHuntGame implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         UUID id = event.getPlayer().getUniqueId();
-        if (queue.remove(id) && queue.size() < MIN_PLAYERS) cancelQueueCountdown();
+        queue.remove(id);
+        searchingMob.remove(id);
         Match active = match;
-        if (active == null || !active.players.contains(id)) return;
-        active.players.remove(id);
-        active.aliveHiders.remove(id);
-        if (active.players.size() < MIN_PLAYERS) {
-            abortMatch(active, "Not enough players remain. The match has ended.");
-        } else if (id.equals(active.hunter)) {
-            if (!active.aliveHiders.isEmpty()) endRound(active, false);
-        } else if (active.aliveHiders.isEmpty()) {
-            endRound(active, true);
-        }
+        if (active == null || !active.players.contains(id) || active.ending) return;
+        active.disconnected.add(id);
+        logMatch("DISCONNECT", active, "player=" + event.getPlayer().getName() + ", grace=60s");
+        BukkitTask old = active.disconnectTasks.remove(id);
+        if (old != null) old.cancel();
+        BukkitTask grace = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (match != active || active.ending || !active.disconnected.remove(id)) return;
+            active.forfeited.add(id);
+            active.disconnectTasks.remove(id);
+            active.aliveHiders.remove(id);
+            logMatch("FORFEIT", active, "reconnect grace expired for " + id);
+            if (id.equals(active.hunter)) endRound(active, false);
+            else if (active.aliveHiders.isEmpty()) endRound(active, true);
+        }, 1200L);
+        active.disconnectTasks.put(id, grace);
     }
 
     private boolean isMatchPlayer(Player player) {
@@ -1544,21 +1577,60 @@ public final class MobHuntGame implements Listener {
     }
 
     private void openAdminMenu(Player p) {
-        Inventory inv=Bukkit.createInventory(null,27,ADMIN_TITLE);
-        boolean maps=plugin.getConfig().getBoolean("mobhunt.random-map",true), zone=plugin.getConfig().getBoolean("mobhunt.shrinking-zone",true);
-        inv.setItem(11,named(maps?Material.LIME_DYE:Material.GRAY_DYE,ChatColor.AQUA+"Random Map Rotation","Status: "+(maps?"ON":"OFF"),"Village / Abandoned Castle"));
-        inv.setItem(13,named(zone?Material.LIME_DYE:Material.GRAY_DYE,ChatColor.AQUA+"Final Shrinking Zone","Status: "+(zone?"ON":"OFF"),"Shrinks during the final 60 seconds"));
-        inv.setItem(15,named(Material.PAPER,ChatColor.LIGHT_PURPLE+"Mob Hunt Statistics","Completed: "+plugin.getConfig().getInt("mobhunt.matches-completed",0),"Rounds: "+plugin.getConfig().getInt("mobhunt.total-rounds",0)));
+        Inventory inv = Bukkit.createInventory(null, 54, ADMIN_TITLE);
+        List<String> disabled = plugin.getConfig().getStringList("mobhunt.disabled-mobs");
+        for (int i = 0; i < MOB_TYPES.size(); i++) {
+            String mob = MOB_TYPES.get(i);
+            boolean enabled = !disabled.contains(mob);
+            Material icon;
+            try { icon = Material.valueOf(mob + "_SPAWN_EGG"); } catch (IllegalArgumentException ex) { icon = Material.PAPER; }
+            inv.setItem(i, named(enabled ? icon : Material.BARRIER,
+                    (enabled ? ChatColor.GREEN : ChatColor.RED) + pretty(mob),
+                    "Mob enabled: " + enabled, "Left-click: toggle mob",
+                    "Right-click: change ability cooldown (" + plugin.getConfig().getInt("mobhunt.ability-cooldowns." + mob, (int)(abilityCooldown(mob)/1000L)) + "s)"));
+        }
+        boolean maps = plugin.getConfig().getBoolean("mobhunt.random-map", true);
+        boolean zone = plugin.getConfig().getBoolean("mobhunt.shrinking-zone", true);
+        int seconds = configuredRoundSeconds(), lives = configuredHunterLives();
+        inv.setItem(45, named(maps ? Material.LIME_DYE : Material.GRAY_DYE, ChatColor.AQUA + "Random Map Rotation", "Status: " + (maps ? "ON" : "OFF")));
+        inv.setItem(47, named(zone ? Material.LIME_DYE : Material.GRAY_DYE, ChatColor.AQUA + "Final Shrinking Zone", "Status: " + (zone ? "ON" : "OFF")));
+        inv.setItem(49, named(Material.CLOCK, ChatColor.LIGHT_PURPLE + "Round Duration", "Current: " + seconds + " seconds", "Click to cycle 180 / 300 / 420 / 600"));
+        inv.setItem(51, named(Material.IRON_AXE, ChatColor.LIGHT_PURPLE + "Hunter Lives", "Current: " + lives, "Click to cycle 1–5"));
+        inv.setItem(53, named(Material.PAPER, ChatColor.GOLD + "Mob Hunt Statistics", "Completed: " + plugin.getConfig().getInt("mobhunt.matches-completed", 0),
+                "Rounds: " + plugin.getConfig().getInt("mobhunt.total-rounds", 0), "Use /mobhunt leaderboard"));
         p.openInventory(inv);
     }
 
     @EventHandler public void onAdminMenuClick(InventoryClickEvent e) {
         if (!(e.getWhoClicked() instanceof Player p) || !e.getView().getTitle().equals(ADMIN_TITLE)) return;
-        e.setCancelled(true); if (!p.hasPermission("nebulacore.admin")) return;
-        if (e.getRawSlot()==11) plugin.getConfig().set("mobhunt.random-map",!plugin.getConfig().getBoolean("mobhunt.random-map",true));
-        else if (e.getRawSlot()==13) plugin.getConfig().set("mobhunt.shrinking-zone",!plugin.getConfig().getBoolean("mobhunt.shrinking-zone",true));
-        else return;
-        plugin.saveConfig(); openAdminMenu(p);
+        e.setCancelled(true);
+        if (!p.hasPermission("nebulacore.admin")) return;
+        int slot = e.getRawSlot();
+        if (slot >= 0 && slot < MOB_TYPES.size()) {
+            String mob = MOB_TYPES.get(slot);
+            if (e.isRightClick()) {
+                int old = plugin.getConfig().getInt("mobhunt.ability-cooldowns." + mob, (int)(abilityCooldown(mob)/1000L));
+                plugin.getConfig().set("mobhunt.ability-cooldowns." + mob, old >= 60 ? 5 : old + 5);
+            } else {
+                List<String> disabled = new ArrayList<>(plugin.getConfig().getStringList("mobhunt.disabled-mobs"));
+                if (disabled.contains(mob)) disabled.remove(mob); else disabled.add(mob);
+                if (disabled.size() >= MOB_TYPES.size()) { p.sendMessage(PREFIX + ChatColor.RED + "At least one mob must remain enabled."); return; }
+                plugin.getConfig().set("mobhunt.disabled-mobs", disabled);
+            }
+        } else if (slot == 45) {
+            plugin.getConfig().set("mobhunt.random-map", !plugin.getConfig().getBoolean("mobhunt.random-map", true));
+        } else if (slot == 47) {
+            plugin.getConfig().set("mobhunt.shrinking-zone", !plugin.getConfig().getBoolean("mobhunt.shrinking-zone", true));
+        } else if (slot == 49) {
+            int[] choices = {180, 300, 420, 600};
+            int current = configuredRoundSeconds(), next = choices[0];
+            for (int i = 0; i < choices.length; i++) if (choices[i] == current) next = choices[(i + 1) % choices.length];
+            plugin.getConfig().set("mobhunt.round-seconds", next);
+        } else if (slot == 51) {
+            plugin.getConfig().set("mobhunt.hunter-lives", configuredHunterLives() >= 5 ? 1 : configuredHunterLives() + 1);
+        } else return;
+        plugin.saveConfig();
+        openAdminMenu(p);
     }
 
     private static final class Match {
