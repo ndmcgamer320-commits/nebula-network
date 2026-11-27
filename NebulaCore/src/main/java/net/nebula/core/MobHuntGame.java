@@ -1433,6 +1433,25 @@ public final class MobHuntGame implements Listener {
         npc.getPersistentDataContainer().set(npcKey, PersistentDataType.STRING, "MOB_HUNT");
     }
 
+    private Arena selectRandomArena() {
+        if (arenas.isEmpty()) return null;
+        return arenas.get(random.nextInt(arenas.size()));
+    }
+
+    private void activateArena(Arena arena) {
+        arenaCenterX = arena.x;
+        arenaCenterZ = arena.z;
+        world.getChunkAt(arenaCenterX >> 4, arenaCenterZ >> 4).load(true);
+        arenaBaseY = world.getHighestBlockYAt(arenaCenterX, arenaCenterZ);
+        world.setSpawnLocation(arenaCenterX, arenaBaseY + 1, arenaCenterZ);
+        WorldBorder border = world.getWorldBorder();
+        border.setCenter(arenaCenterX + 0.5, arenaCenterZ + 0.5);
+        border.setSize(160.0);
+        border.setDamageBuffer(0.0);
+        border.setDamageAmount(0.0);
+        border.setWarningDistance(8);
+    }
+
     private void buildVillage() {
         world.setDifficulty(Difficulty.NORMAL);
         world.setTime(6000L);
@@ -1480,6 +1499,17 @@ public final class MobHuntGame implements Listener {
         border.setWarningDistance(8);
         plugin.getLogger().info("Using naturally generated Minecraft village at "
                 + arenaCenterX + ", " + arenaCenterZ + " in seed " + world.getSeed());
+    }
+
+    private static final class Arena {
+        final String name;
+        final int x;
+        final int z;
+        Arena(String name, int x, int z) {
+            this.name = name;
+            this.x = x;
+            this.z = z;
+        }
     }
 
     private static final class Match {
