@@ -38,9 +38,19 @@ commands:
   duel:
     description: Challenge players, queue, practice the bot or edit your kit.
     usage: /duel [queue|bot|edit|leave]
+
   arenareset:
     description: Regenerate the BedWars and Duel maps.
     usage: /arenareset [bedwars|duel|all]
+  stats:
+    description: View player network statistics.
+    usage: /stats [player]
+  leaderboard:
+    description: View the network ELO or kill leaderboard.
+    usage: /leaderboard [elo|kills]
+  sus:
+    description: Review flagged player activity (staff only).
+    usage: /sus [list|check <player>|clear <player>]
 permissions:
   nebulacore.admin:
     default: op
