@@ -1,0 +1,27 @@
+name: Mob Hunt Build Check
+
+on:
+  push:
+    branches: [feature/mobhunt-full-upgrade]
+    paths:
+      - "NebulaCore/**"
+      - ".github/workflows/mobhunt-build.yml"
+  pull_request:
+    paths:
+      - "NebulaCore/**"
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Compile NebulaCore
+        run: mvn -B -f NebulaCore/pom.xml package
