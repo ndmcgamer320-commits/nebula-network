@@ -564,7 +564,7 @@ public final class MobHuntGame implements Listener {
 
     private void applyMobAbility(Player player, String mob) {
         switch (mob) {
-            case "GHAST", "BAT", "BEE", "PHANTOM", "ALLAY" -> {
+            case "GHAST", "BAT", "BEE", "PHANTOM" -> {
                 player.setAllowFlight(true);
                 player.setFlying(true);
                 player.setFlySpeed(0.08f);
@@ -591,8 +591,9 @@ public final class MobHuntGame implements Listener {
                     player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 0, false, false, true));
             case "HORSE", "DONKEY", "MULE", "LLAMA", "STRIDER" ->
                     player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 1, false, false, true));
-            case "BLAZE", "PHANTOM" -> {
+            case "BLAZE" -> {
                 player.setAllowFlight(true);
+                player.setFlying(true);
                 player.setFlySpeed(0.06f);
             }
             default -> { }
@@ -629,13 +630,13 @@ public final class MobHuntGame implements Listener {
 
     private String mobDescription(String mob) {
         return switch (mob) {
-            case "WITHER_SKELETON" -> "Hits apply Wither to the hunter";
+            case "WITHER_SKELETON" -> "Fire resistance • skeletal trait";
             case "BEE" -> "Can fly • sting ability";
             case "SPIDER", "CAVE_SPIDER" -> "Climbs walls automatically";
             case "STRAY" -> "Hits slow the hunter";
             case "HUSK" -> "Hits apply Hunger";
             case "BLAZE" -> "Fire resistance • flame burst";
-            case "GHAST", "BAT", "PHANTOM" -> "Can fly";
+            case "GHAST", "BAT", "PHANTOM", "BEE" -> "Can fly";
             case "IRON_GOLEM" -> "High resistance • ground slam";
             case "TURTLE" -> "Water breathing • defensive trait";
             case "FOX" -> "Fast movement • pounce";
@@ -905,7 +906,7 @@ public final class MobHuntGame implements Listener {
         long now = System.currentTimeMillis(), readyAt = active.abilityReadyAt.getOrDefault(id, 0L);
         if (now < readyAt) { player.sendMessage(PREFIX + ChatColor.RED + "Ability cooldown: " + ((readyAt - now + 999) / 1000) + "s."); openAbilityGui(player); return; }
         active.abilityReadyAt.put(id, now + abilityCooldown(mob));
-        Player hunter = Bukkit.getPlayer(active.hunter);
+        Player hunter = active.hunter == null ? null : Bukkit.getPlayer(active.hunter);
         switch (mob) {
             case "WARDEN" -> {
                 Location start = player.getEyeLocation();
@@ -1026,8 +1027,8 @@ public final class MobHuntGame implements Listener {
         if (!(event.getWhoClicked() instanceof Player player) || !event.getView().getTitle().equals(ABILITY_TITLE)) return;
         event.setCancelled(true);
         if (event.getRawSlot() != 11) return;
-        Match active = match;
-        if (active == null || !active.aliveHiders.contains(player.getUniqueId())) return;
+        Match active = practiceSessions.getOrDefault(player.getUniqueId(), match);
+        if (active == null || (!practiceSessions.containsKey(player.getUniqueId()) && !active.aliveHiders.contains(player.getUniqueId()))) return;
         player.closeInventory(); useMobAbility(player, active);
     }
 
