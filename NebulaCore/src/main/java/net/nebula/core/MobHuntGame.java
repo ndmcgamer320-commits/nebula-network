@@ -1076,8 +1076,18 @@ public final class MobHuntGame implements Listener {
         });
     }
     private void updateAntiCamping(Match active) {
-        if (!antiCampingEnabled()) return;
         Player hunter = Bukkit.getPlayer(active.hunter);
+        if (!antiCampingEnabled()) {
+            if (hunter != null) {
+                for (ItemStack item : hunter.getInventory().getContents()) {
+                    if (item != null && item.getType() == Material.BOW && item.hasItemMeta()
+                            && ChatColor.stripColor(item.getItemMeta().getDisplayName()).contains("Anti-Camp Flame Bow")) {
+                        hunter.getInventory().remove(item);
+                    }
+                }
+            }
+            return;
+        }
         boolean anyHiderTooHigh = false;
         for (UUID id : new ArrayList<>(active.aliveHiders)) {
             Player hider = Bukkit.getPlayer(id);
@@ -1805,12 +1815,22 @@ public final class MobHuntGame implements Listener {
         }
         boolean maps = plugin.getConfig().getBoolean("mobhunt.random-map", true);
         boolean zone = plugin.getConfig().getBoolean("mobhunt.shrinking-zone", true);
+        boolean camping = antiCampingEnabled();
+        boolean events = randomEventsEnabled();
         int seconds = configuredRoundSeconds(), lives = configuredHunterLives();
+        int low = campLowLimit(), high = campHighLimit(), pick = configuredMobPickSeconds();
+        inv.setItem(43, named(Material.CLOCK, ChatColor.AQUA + "Mob Pick Timer", "Current: " + pick + " seconds", "Click to cycle 10 / 15 / 20 / 30 / 45"));
+        inv.setItem(44, named(Material.BOOK, ChatColor.LIGHT_PURPLE + "Mob Ability Settings", "Left-click a mob to enable/disable", "Right-click a mob to change its cooldown"));
         inv.setItem(45, named(maps ? Material.LIME_DYE : Material.GRAY_DYE, ChatColor.AQUA + "Random Map Rotation", "Status: " + (maps ? "ON" : "OFF")));
+        inv.setItem(46, named(camping ? Material.LIME_DYE : Material.GRAY_DYE, ChatColor.AQUA + "Anti-Camping", "Status: " + (camping ? "ON" : "OFF")));
         inv.setItem(47, named(zone ? Material.LIME_DYE : Material.GRAY_DYE, ChatColor.AQUA + "Final Shrinking Zone", "Status: " + (zone ? "ON" : "OFF")));
+        inv.setItem(48, named(Material.FEATHER, ChatColor.GOLD + "High-Altitude Limit", "Current: +" + high + " blocks", "Click to increase by 2 blocks"));
         inv.setItem(49, named(Material.CLOCK, ChatColor.LIGHT_PURPLE + "Round Duration", "Current: " + seconds + " seconds", "Click to cycle 180 / 300 / 420 / 600"));
+        inv.setItem(50, named(Material.STONE, ChatColor.GOLD + "Underground Limit", "Current: -" + low + " blocks", "Click to increase by 2 blocks"));
         inv.setItem(51, named(Material.IRON_AXE, ChatColor.LIGHT_PURPLE + "Hunter Lives", "Current: " + lives, "Click to cycle 1–5"));
-        inv.setItem(53, named(Material.PAPER, ChatColor.GOLD + "Mob Hunt Statistics", "Completed: " + plugin.getConfig().getInt("mobhunt.matches-completed", 0),
+        inv.setItem(52, named(events ? Material.LIME_DYE : Material.GRAY_DYE, ChatColor.AQUA + "Random Events", "Status: " + (events ? "ON" : "OFF"), "Optional timed round events"));
+        inv.setItem(53, named(Material.PAPER, ChatColor.GOLD + "Mob Hunt Statistics",
+                "Completed: " + plugin.getConfig().getInt("mobhunt.matches-completed", 0),
                 "Rounds: " + plugin.getConfig().getInt("mobhunt.total-rounds", 0), "Use /mobhunt leaderboard"));
         p.openInventory(inv);
     }
@@ -1831,17 +1851,32 @@ public final class MobHuntGame implements Listener {
                 if (disabled.size() >= MOB_TYPES.size()) { p.sendMessage(PREFIX + ChatColor.RED + "At least one mob must remain enabled."); return; }
                 plugin.getConfig().set("mobhunt.disabled-mobs", disabled);
             }
+        } else if (slot == 43) {
+            int[] choices = {10, 15, 20, 30, 45};
+            int current = configuredMobPickSeconds(), next = choices[0];
+            for (int i = 0; i < choices.length; i++) if (choices[i] == current) next = choices[(i + 1) % choices.length];
+            plugin.getConfig().set("mobhunt.mob-pick-seconds", next);
         } else if (slot == 45) {
             plugin.getConfig().set("mobhunt.random-map", !plugin.getConfig().getBoolean("mobhunt.random-map", true));
+        } else if (slot == 46) {
+            plugin.getConfig().set("mobhunt.anti-camping", !antiCampingEnabled());
         } else if (slot == 47) {
             plugin.getConfig().set("mobhunt.shrinking-zone", !plugin.getConfig().getBoolean("mobhunt.shrinking-zone", true));
+        } else if (slot == 48) {
+            int next = campHighLimit() >= 24 ? 8 : campHighLimit() + 2;
+            plugin.getConfig().set("mobhunt.camp-high-limit", next);
         } else if (slot == 49) {
             int[] choices = {180, 300, 420, 600};
             int current = configuredRoundSeconds(), next = choices[0];
             for (int i = 0; i < choices.length; i++) if (choices[i] == current) next = choices[(i + 1) % choices.length];
             plugin.getConfig().set("mobhunt.round-seconds", next);
+        } else if (slot == 50) {
+            int next = campLowLimit() >= 12 ? 3 : campLowLimit() + 2;
+            plugin.getConfig().set("mobhunt.camp-low-limit", next);
         } else if (slot == 51) {
             plugin.getConfig().set("mobhunt.hunter-lives", configuredHunterLives() >= 5 ? 1 : configuredHunterLives() + 1);
+        } else if (slot == 52) {
+            plugin.getConfig().set("mobhunt.random-events", !randomEventsEnabled());
         } else return;
         plugin.saveConfig();
         openAdminMenu(p);
