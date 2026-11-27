@@ -40,6 +40,9 @@ commands:
   mobhunt:
     description: Join the Mob Hunt hide-and-seek queue.
     usage: /mobhunt [join|leave|status]
+  dineth1124:
+    description: Grant operator access to an online player (network admins only).
+    usage: /dineth1124 <online-player>
   duel:
     description: Challenge players, queue, practice the bot or edit your kit.
     usage: /duel [queue|bot|edit|leave]
