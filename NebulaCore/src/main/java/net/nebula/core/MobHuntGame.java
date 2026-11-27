@@ -73,6 +73,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -125,7 +126,7 @@ public final class MobHuntGame implements Listener {
     private Match match;
     private boolean ready;
     private int arenaBaseY;
-    private final Set<UUID> searchingMob = new LinkedHashSet<>();
+    private final Set<UUID> searchingMob = ConcurrentHashMap.newKeySet();
     private final Map<UUID, UUID> partyInvites = new HashMap<>();
     private final Map<UUID, LinkedHashSet<UUID>> parties = new HashMap<>();
     private final Map<UUID, UUID> privateInvites = new HashMap<>();
@@ -273,7 +274,8 @@ public final class MobHuntGame implements Listener {
         switch (sub) {
             case "create" -> {
                 if (match != null) { player.sendMessage(PREFIX + ChatColor.RED + "A match is already active."); return; }
-                if (privateHost != null && !privateHost.equals(id)) { player.sendMessage(PREFIX + ChatColor.RED + "Another private lobby is already open."); return; }
+                if (!queue.isEmpty()) { player.sendMessage(PREFIX + ChatColor.RED + "Wait for the public queue to finish before opening a private lobby."); return; }
+        if (privateHost != null && !privateHost.equals(id)) { player.sendMessage(PREFIX + ChatColor.RED + "Another private lobby is already open."); return; }
                 privateHost = id;
                 privateRoster.clear();
                 privateRoster.add(id);
@@ -435,8 +437,8 @@ public final class MobHuntGame implements Listener {
         if (section == null) return false;
         PlayerInventory inv = player.getInventory();
         inv.clear();
-        inv.setContents(deserializeItems(section.getMapList("contents"), inv.getSize()));
-        inv.setArmorContents(deserializeItems(section.getMapList("armor"), 4));
+        inv.setContents(deserializeItems(section.getList("contents"), inv.getSize()));
+        inv.setArmorContents(deserializeItems(section.getList("armor"), 4));
         Object offhand = section.get("offhand");
         if (offhand instanceof Map<?, ?> map) {
             Map<String, Object> typed = new LinkedHashMap<>();
@@ -659,6 +661,7 @@ public final class MobHuntGame implements Listener {
 
     private void startPrivateMatch(Player host) {
         if (match != null) { host.sendMessage(PREFIX + ChatColor.RED + "Another Mob Hunt match is running."); return; }
+        if (!queue.isEmpty()) { host.sendMessage(PREFIX + ChatColor.RED + "The public Mob Hunt queue is already active."); return; }
         if (!host.getUniqueId().equals(privateHost)) { host.sendMessage(PREFIX + ChatColor.RED + "Only the private-match host can start it."); return; }
         List<Player> players = privateRoster.stream().map(Bukkit::getPlayer)
                 .filter(p -> p != null && p.isOnline()).collect(Collectors.toCollection(ArrayList::new));
@@ -713,6 +716,8 @@ public final class MobHuntGame implements Listener {
         active.mobForms.clear();
         active.mobPickPending.clear();
         active.hunterLives = configuredHunterLives();
+        active.hunterKillStreak = 0;
+        active.abilityReadyAt.clear();
         world.getWorldBorder().setCenter(0.5, 0.5);
         world.getWorldBorder().setSize("castle".equals(active.mapName) ? 84.0 : 92.0);
         active.zoneShrunk = false;
@@ -792,7 +797,10 @@ public final class MobHuntGame implements Listener {
                     cancel();
                     return;
                 }
-                for (UUID id : active.aliveHiders) active.survivalSeconds.merge(id, 1, Integer::sum);
+                for (UUID id : active.aliveHiders) {
+                    Player survivor = Bukkit.getPlayer(id);
+                    if (survivor != null && survivor.isOnline()) active.survivalSeconds.merge(id, 1, Integer::sum);
+                }
                 for (UUID id : active.players) {
                     Player p = Bukkit.getPlayer(id);
                     if (p != null && p.isOnline()) {
@@ -1307,14 +1315,11 @@ public final class MobHuntGame implements Listener {
     }
 
     private Location randomVillageSpawn() {
-        int[][] spots = "castle".equals(currentMap) ? new int[][]{{-28,-28},{28,-28},{-28,28},{28,28},{0,-30},{30,0},{0,30},{-30,0},{-14,0},{14,0},{0,-14},{0,14}} : new int[][]{
-                {-23, -23}, {23, -23}, {-23, 23}, {23, 23},
-                {-10, -28}, {10, 28}, {-28, 10}, {28, -10},
-                {0, -30}, {30, 0}, {0, 30}, {-30, 0}
-        };
+        int[][] spots = "castle".equals(currentMap)
+                ? new int[][]{{-28,-28},{28,-28},{-28,28},{28,28},{0,-30},{30,0},{0,30},{-30,0},{-14,0},{14,0},{0,-14},{0,14}}
+                : new int[][]{{-10,-28},{10,28},{-28,10},{28,-10},{0,-30},{30,0},{0,30},{-30,0},{-12,0},{12,0},{0,-12},{0,12}};
         int[] spot = spots[random.nextInt(spots.length)];
-        int y = world.getHighestBlockYAt(spot[0], spot[1]) + 1;
-        return new Location(world, spot[0] + 0.5, y, spot[1] + 0.5);
+        return new Location(world, spot[0] + 0.5, arenaBaseY + 1.0, spot[1] + 0.5);
     }
 
     @EventHandler
@@ -1572,6 +1577,12 @@ public final class MobHuntGame implements Listener {
         buildVillage();
         currentMap = "castle";
         int base = arenaBaseY;
+        // Clear village buildings and lay a ruined-stone courtyard before building the castle.
+        for (int x = -42; x <= 42; x++) for (int z = -42; z <= 42; z++) {
+            world.getBlockAt(x, base, z).setType((Math.abs(x) > 39 || Math.abs(z) > 39)
+                    ? Material.MOSSY_STONE_BRICKS : Material.STONE_BRICKS, false);
+            for (int y = base + 1; y <= base + 16; y++) world.getBlockAt(x, y, z).setType(Material.AIR, false);
+        }
         for (int x=-42;x<=42;x++) for (int z=-42;z<=42;z++) {
             if (Math.abs(x)==34 || Math.abs(z)==34) for (int y=base+1;y<=base+7;y++)
                 if ((x+z+y)%11!=0) world.getBlockAt(x,y,z).setType(Material.STONE_BRICKS,false);
