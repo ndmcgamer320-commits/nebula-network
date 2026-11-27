@@ -94,10 +94,14 @@ public final class MobHuntGame implements Listener {
     private static final String ABILITY_TITLE = ChatColor.DARK_PURPLE + "Mob Ability Cooldowns";
     private static final int HUNTER_HIDE_SECONDS = 15;
     private static final List<String> MOB_TYPES = List.of(
-            "PIG", "COW", "SHEEP", "CHICKEN", "WOLF", "CAT", "FOX", "RABBIT",
-            "BAT", "SPIDER", "CAVE_SPIDER", "ENDERMAN", "CREEPER", "ZOMBIE",
-            "SKELETON", "SLIME", "MAGMA_CUBE", "GHAST", "WARDEN", "GOAT",
-            "PANDA", "BEE", "FROG", "TURTLE", "AXOLOTL", "CAMEL", "SNIFFER"
+            "PIG", "COW", "SHEEP", "CHICKEN", "WOLF", "CAT", "FOX", "RABBIT", "VILLAGER",
+            "IRON_GOLEM", "SNOW_GOLEM", "HORSE", "DONKEY", "MULE", "LLAMA", "POLAR_BEAR",
+            "OCELOT", "MOOSHROOM", "PARROT", "BAT", "SPIDER", "CAVE_SPIDER", "ENDERMAN",
+            "CREEPER", "ZOMBIE", "HUSK", "DROWNED", "SKELETON", "STRAY", "SLIME",
+            "MAGMA_CUBE", "GHAST", "WARDEN", "GOAT", "PANDA", "BEE", "FROG", "TURTLE",
+            "AXOLOTL", "CAMEL", "SNIFFER", "ALLAY", "ARMADILLO", "BLAZE", "PHANTOM",
+            "SILVERFISH", "ENDERMITE", "PILLAGER", "VINDICATOR", "EVOKER", "PIGLIN",
+            "HOGLIN", "STRIDER", "DOLPHIN", "SHULKER", "BREEZE", "BOGGED"
     );
     private static final List<Material> HUNTER_TOOLS = List.of(
             Material.SPYGLASS, Material.MAP, Material.FEATHER, Material.OAK_PLANKS,
@@ -542,6 +546,16 @@ public final class MobHuntGame implements Listener {
                     player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, ROUND_SECONDS * 20, 0, false, false, true));
             case "WARDEN" ->
                     player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, ROUND_SECONDS * 20, 0, false, false, true));
+            case "IRON_GOLEM" ->
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, ROUND_SECONDS * 20, 0, false, false, true));
+            case "VILLAGER", "ALLAY" ->
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 0, false, false, true));
+            case "HORSE", "DONKEY", "MULE", "LLAMA", "STRIDER" ->
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ROUND_SECONDS * 20, 1, false, false, true));
+            case "BLAZE", "PHANTOM" -> {
+                player.setAllowFlight(true);
+                player.setFlySpeed(0.06f);
+            }
             default -> { }
         }
     }
@@ -654,11 +668,16 @@ public final class MobHuntGame implements Listener {
             case "WARDEN" -> "Sonic Pulse"; case "CREEPER" -> "Creeper Burst"; case "GHAST" -> "Ghast Fireball";
             case "BEE" -> "Sting"; case "SPIDER", "CAVE_SPIDER" -> "Web Dash";
             case "SLIME", "MAGMA_CUBE", "FROG", "RABBIT" -> "Mega Jump";
-            case "WOLF", "FOX", "CAT" -> "Pounce"; default -> "Mob Strike";
+            case "WOLF", "FOX", "CAT" -> "Pounce";
+            case "VILLAGER", "ALLAY" -> "Emerald Escape";
+            case "IRON_GOLEM" -> "Iron Slam";
+            case "HORSE", "DONKEY", "MULE", "LLAMA" -> "Stampede";
+            case "BLAZE" -> "Flame Burst";
+            default -> "Mob Strike";
         };
     }
     private long abilityCooldown(String mob) {
-        return switch (mob) { case "WARDEN", "GHAST", "CREEPER" -> 15000L; case "BEE", "SPIDER", "CAVE_SPIDER" -> 10000L; default -> 8000L; };
+        return switch (mob) { case "WARDEN", "GHAST", "CREEPER", "IRON_GOLEM" -> 15000L; case "BEE", "SPIDER", "CAVE_SPIDER", "BLAZE" -> 10000L; default -> 8000L; };
     }
     private void openAbilityGui(Player player) {
         Match active = match;
