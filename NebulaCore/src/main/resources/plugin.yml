@@ -37,7 +37,7 @@ commands:
     usage: /bedwars [leave]
   duel:
     description: Challenge players, queue, practice the bot or edit your kit.
-    usage: /duel [player|queue|bot|accept|deny|edit|leave]
+    usage: /duel [queue|bot|edit|leave]
   arenareset:
     description: Regenerate the BedWars and Duel maps.
     usage: /arenareset [bedwars|duel|all]
