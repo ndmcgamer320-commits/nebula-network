@@ -41,6 +41,8 @@ public final class NebulaGames implements Listener {
     private final Deque<UUID> duelQueue = new ArrayDeque<>();
     private final Map<UUID, DuelMatch> duelPlayers = new HashMap<>();
     private final Map<UUID, DuelMatch> bots = new HashMap<>();
+    private final Set<UUID> awaitingDuelName = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, UUID> pendingDuelInvites = new HashMap<>();
     private final Map<UUID, ItemStack[]> customKits = new HashMap<>();
     private final Map<UUID, PlayerSnapshot> snapshots = new HashMap<>();
     private final Random random = new Random();
@@ -69,7 +71,7 @@ public final class NebulaGames implements Listener {
 
     public void openDuelMenu(Player player) {
         Inventory inv = Bukkit.createInventory(null, 27, DUEL_MENU);
-        inv.setItem(11, named(Material.IRON_SWORD, ChatColor.AQUA + "Player Duel Queue", "Queue for a CPvP duel against another player"));
+        inv.setItem(11, named(Material.IRON_SWORD, ChatColor.AQUA + "Challenge a Player", "Enter a player's username to invite them"));
         inv.setItem(13, named(Material.ZOMBIE_HEAD, ChatColor.GREEN + "Practice Bot", "Start a solo duel against the training bot"));
         inv.setItem(15, named(Material.CHEST, ChatColor.LIGHT_PURPLE + "Edit CPvP Kit", "Customize the kit used in duels"));
         inv.setItem(22, named(Material.BARRIER, ChatColor.RED + "Leave Queue", "Leave the duel queue"));
@@ -88,8 +90,16 @@ public final class NebulaGames implements Listener {
         if (args.length > 0) {
             switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "bot", "practice" -> startBotDuel(player);
+                case "player", "challenge" -> requestPlayerDuel(player);
+                case "accept" -> acceptPlayerDuel(player);
+                case "deny" -> denyPlayerDuel(player);
                 case "queue", "join" -> queueDuel(player);
-                case "leave", "cancel" -> leaveDuelQueue(player);
+                case "leave" -> leaveDuelQueue(player);
+                case "cancel" -> {
+                    awaitingDuelName.remove(player.getUniqueId());
+                    leaveDuelQueue(player);
+                    player.sendMessage(PREFIX + "Duel request cancelled.");
+                }
                 case "edit", "kit" -> openKitEditor(player);
                 default -> openDuelMenu(player);
             }
@@ -246,6 +256,100 @@ public final class NebulaGames implements Listener {
     private Location bedWarsSpawn(BedWarsMatch match, UUID player) {
         return isTeamRed(match, player) ? new Location(match.world, -24.5, 100, 0.5)
                 : new Location(match.world, 24.5, 100, 0.5);
+    }
+
+
+    private void requestPlayerDuel(Player challenger) {
+        UUID id = challenger.getUniqueId();
+        if (duelPlayers.containsKey(id) || bedWarsPlayers.containsKey(id)) {
+            challenger.sendMessage(PREFIX + "Finish your current game first.");
+            return;
+        }
+        awaitingDuelName.add(id);
+        challenger.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Who do you want to duel?");
+        challenger.sendMessage(PREFIX + ChatColor.GRAY + "Type their exact Minecraft username in chat. Type 'cancel' to stop.");
+    }
+
+    @EventHandler
+    public void onDuelNameInput(AsyncPlayerChatEvent event) {
+        Player challenger = event.getPlayer();
+        UUID challengerId = challenger.getUniqueId();
+        if (!awaitingDuelName.remove(challengerId)) return;
+        event.setCancelled(true);
+        String requestedName = event.getMessage().trim();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!challenger.isOnline()) return;
+            if (requestedName.equalsIgnoreCase("cancel")) {
+                challenger.sendMessage(PREFIX + "Duel request cancelled.");
+                return;
+            }
+            if (!requestedName.matches("[A-Za-z0-9_]{3,16}")) {
+                challenger.sendMessage(PREFIX + ChatColor.RED + "Enter a valid Minecraft username (3–16 letters, numbers or underscores).");
+                return;
+            }
+            Player target = Bukkit.getPlayerExact(requestedName);
+            if (target == null || !target.isOnline()) {
+                challenger.sendMessage(PREFIX + ChatColor.RED + "That player is not online. Try /duel player again.");
+                return;
+            }
+            if (target.equals(challenger)) {
+                challenger.sendMessage(PREFIX + "You cannot challenge yourself.");
+                return;
+            }
+            if (duelPlayers.containsKey(target.getUniqueId()) || bedWarsPlayers.containsKey(target.getUniqueId())) {
+                challenger.sendMessage(PREFIX + ChatColor.RED + "That player is already in a game.");
+                return;
+            }
+            if (pendingDuelInvites.containsKey(target.getUniqueId())) {
+                challenger.sendMessage(PREFIX + "That player already has a pending duel invitation.");
+                return;
+            }
+            pendingDuelInvites.put(target.getUniqueId(), challengerId);
+            challenger.sendMessage(PREFIX + ChatColor.GREEN + "Duel invitation sent to " + target.getName() + ".");
+            target.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + challenger.getName() + " challenged you to a CPvP duel!");
+            target.sendMessage(PREFIX + "Type " + ChatColor.GREEN + "/duel accept" + ChatColor.GRAY + " or " + ChatColor.RED + "/duel deny" + ChatColor.GRAY + ".");
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (pendingDuelInvites.remove(target.getUniqueId(), challengerId)) {
+                    if (challenger.isOnline()) challenger.sendMessage(PREFIX + "Your duel invitation to " + target.getName() + " expired.");
+                    if (target.isOnline()) target.sendMessage(PREFIX + "The duel invitation from " + challenger.getName() + " expired.");
+                }
+            }, 1200L);
+        });
+    }
+
+    private void acceptPlayerDuel(Player target) {
+        UUID challengerId = pendingDuelInvites.remove(target.getUniqueId());
+        if (challengerId == null) {
+            target.sendMessage(PREFIX + "You do not have a pending duel invitation.");
+            return;
+        }
+        Player challenger = Bukkit.getPlayer(challengerId);
+        if (challenger == null || !challenger.isOnline()) {
+            target.sendMessage(PREFIX + "That player is no longer online.");
+            return;
+        }
+        if (duelPlayers.containsKey(target.getUniqueId()) || bedWarsPlayers.containsKey(target.getUniqueId())
+                || duelPlayers.containsKey(challengerId) || bedWarsPlayers.containsKey(challengerId)) {
+            target.sendMessage(PREFIX + "One of you is already in a game. The invitation was cancelled.");
+            challenger.sendMessage(PREFIX + "The duel could not start because one player is already in a game.");
+            return;
+        }
+        leaveDuelQueue(challenger);
+        leaveDuelQueue(target);
+        startPlayerDuel(challenger, target);
+    }
+
+    private void denyPlayerDuel(Player target) {
+        UUID challengerId = pendingDuelInvites.remove(target.getUniqueId());
+        if (challengerId == null) {
+            target.sendMessage(PREFIX + "You do not have a pending duel invitation.");
+            return;
+        }
+        Player challenger = Bukkit.getPlayer(challengerId);
+        target.sendMessage(PREFIX + "You declined the duel invitation.");
+        if (challenger != null && challenger.isOnline()) {
+            challenger.sendMessage(PREFIX + target.getName() + " declined your duel invitation.");
+        }
     }
 
     private void queueDuel(Player player) {
@@ -481,8 +585,8 @@ public final class NebulaGames implements Listener {
                 player.closeInventory();
             } else if (title.equals(DUEL_MENU)) {
                 if (slot == 11) {
-                    queueDuel(player);
                     player.closeInventory();
+                    requestPlayerDuel(player);
                 } else if (slot == 13) {
                     player.closeInventory();
                     startBotDuel(player);
@@ -733,6 +837,9 @@ public final class NebulaGames implements Listener {
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         UUID id = player.getUniqueId();
+        awaitingDuelName.remove(id);
+        pendingDuelInvites.remove(id);
+        pendingDuelInvites.values().removeIf(challengerId -> challengerId.equals(id));
         leaveBedWarsQueue(player);
         leaveDuelQueue(player);
         BedWarsMatch bw = bedWarsPlayers.get(id);
