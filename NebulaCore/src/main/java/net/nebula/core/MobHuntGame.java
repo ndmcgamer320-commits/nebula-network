@@ -633,10 +633,10 @@ public final class MobHuntGame implements Listener {
             case "WITHER_SKELETON" -> "Fire resistance • skeletal trait";
             case "BEE" -> "Can fly • sting ability";
             case "SPIDER", "CAVE_SPIDER" -> "Climbs walls automatically";
-            case "STRAY" -> "Hits slow the hunter";
-            case "HUSK" -> "Hits apply Hunger";
+            case "STRAY" -> "Slow-falling mobility trait";
+            case "HUSK" -> "Desert survival trait";
             case "BLAZE" -> "Fire resistance • flame burst";
-            case "GHAST", "BAT", "PHANTOM", "BEE" -> "Can fly";
+            case "GHAST", "BAT", "PHANTOM" -> "Can fly";
             case "IRON_GOLEM" -> "High resistance • ground slam";
             case "TURTLE" -> "Water breathing • defensive trait";
             case "FOX" -> "Fast movement • pounce";
