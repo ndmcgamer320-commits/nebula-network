@@ -165,6 +165,42 @@ jobs:
           done
           echo "AuthMe, Multiverse, VoidWorldGenerator and GrimAC are installed."
 
+      - name: Install Simple Voice Chat for Paper
+        env:
+          VOICE_HOST: ${{ vars.VOICE_HOST }}
+        run: |
+          set -euo pipefail
+          SVC_VERSIONS=$(curl -fsSL -G \
+            --data-urlencode 'game_versions=["1.21.11"]' \
+            --data-urlencode 'loaders=["paper"]' \
+            https://api.modrinth.com/v2/project/simple-voice-chat/version)
+          SVC_URL=$(echo "$SVC_VERSIONS" | jq -r 'first(.[] | select(.version_type == "release") | .files[] | select(.primary == true) | .url) // "null"')
+          if [ "$SVC_URL" = "null" ] || [ -z "$SVC_URL" ]; then
+            echo "::error::Could not find a stable Simple Voice Chat Paper build compatible with Minecraft 1.21.11."
+            exit 1
+          fi
+          mkdir -p plugins/voicechat
+          curl -fL --retry 3 "$SVC_URL" -o plugins/SimpleVoiceChat-Paper.jar
+          test -s plugins/SimpleVoiceChat-Paper.jar
+          jar tf plugins/SimpleVoiceChat-Paper.jar | grep -q "plugin.yml"
+          echo "Installed Simple Voice Chat Paper plugin."
+
+          cat > plugins/voicechat/voicechat-server.properties <<EOF
+          port=24454
+          bind_address=
+          voice_host=$VOICE_HOST
+          allow_recording=false
+          max_voice_distance=48.0
+          whisper_distance=24.0
+          force_voice_chat=false
+          EOF
+
+          if [ -z "$VOICE_HOST" ]; then
+            echo "::warning::GitHub Actions variable VOICE_HOST is empty. Create the Playit Simple Voice Chat UDP tunnel and set VOICE_HOST to its public host:port before expecting voice chat to connect."
+          else
+            echo "Simple Voice Chat configured to advertise the supplied Playit UDP endpoint."
+          fi
+
       - name: Start Playit tunnel
         env:
           SECRET_KEY: ${{ secrets.PLAYIT_SECRET }}
