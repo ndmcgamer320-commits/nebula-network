@@ -89,6 +89,9 @@ public final class MobHuntGame implements Listener {
     private static final int ROUNDS = 3;
     private static final int ROUND_SECONDS = 300;
     private static final int HUNTER_LIVES = 3;
+    private static final int MOB_PICK_SECONDS = 15;
+    private static final int CAMP_LOW_LIMIT = 5;
+    private static final int CAMP_HIGH_LIMIT = 12;
     private static final String MOB_PICK_TITLE = ChatColor.DARK_GREEN + "Choose Your Mob";
     private static final String MOB_SEARCH_TITLE = ChatColor.DARK_AQUA + "Mob Search";
     private static final String ABILITY_TITLE = ChatColor.DARK_PURPLE + "Mob Ability Cooldowns";
@@ -438,6 +441,7 @@ public final class MobHuntGame implements Listener {
     private void giveHunterBaseKit(Player player) {
         player.getInventory().setItem(0, named(Material.COMPASS, ChatColor.AQUA + "Hider Tracker",
                 "Points toward the nearest hider"));
+        player.getInventory().setItem(1, new ItemStack(Material.IRON_AXE));
         player.getInventory().setItem(7, new ItemStack(Material.ENDER_PEARL, 3));
         player.getInventory().setItem(8, new ItemStack(Material.COOKED_BEEF, 5));
     }
@@ -606,7 +610,10 @@ public final class MobHuntGame implements Listener {
                 bow.addEnchantment(Enchantment.FLAME, 1);
                 boolean has = Arrays.stream(hunter.getInventory().getContents()).filter(i -> i != null)
                     .anyMatch(i -> i.getType() == Material.BOW && i.hasItemMeta() && ChatColor.stripColor(i.getItemMeta().getDisplayName()).contains("Anti-Camp Flame Bow"));
-                if (!has) hunter.getInventory().addItem(bow);
+                if (!has) {
+                    hunter.getInventory().addItem(bow);
+                    hunter.getInventory().addItem(new ItemStack(Material.ARROW, 16));
+                }
             }
         }
     }
@@ -719,7 +726,7 @@ public final class MobHuntGame implements Listener {
         active.cancelRoundTasks();
         if (hunterWon) {
             active.scores.merge(active.hunter, 1, Integer::sum);
-            broadcastToMatch(active, ChatColor.GOLD + nameOf(active.hunter) + " tagged every hider and wins the round!");
+            broadcastToMatch(active, ChatColor.GOLD + nameOf(active.hunter) + " eliminated every hider and wins the round!");
         } else {
             for (UUID id : active.aliveHiders) active.scores.merge(id, 1, Integer::sum);
             broadcastToMatch(active, ChatColor.GREEN + "Time is up! Every hider who stayed hidden earns a point.");
@@ -826,29 +833,6 @@ public final class MobHuntGame implements Listener {
     }
 
     @EventHandler
-    public void onHunterTag(PlayerInteractEntityEvent event) {
-        if (!(event.getRightClicked() instanceof Player hider)) return;
-        Match active = match;
-        if (active == null || active.ending || active.roundEnded) return;
-        Player hunter = event.getPlayer();
-        if (!hunter.getUniqueId().equals(active.hunter) || !active.aliveHiders.contains(hider.getUniqueId())) return;
-        if (!hunter.getWorld().equals(world) || !hider.getWorld().equals(world)) return;
-        if (hunter.getLocation().distanceSquared(hider.getLocation()) > 9.0) return;
-        event.setCancelled(true);
-        active.aliveHiders.remove(hider.getUniqueId());
-        active.tagged.add(hider.getUniqueId());
-        DisguiseAPI.undisguiseToAll(hider);
-        hider.setAllowFlight(false);
-        hider.setFlying(false);
-        hider.closeInventory();
-        hider.sendTitle(ChatColor.RED + "TAGGED!", ChatColor.GRAY + "You are out for this round.", 5, 35, 10);
-        hunter.sendMessage(PREFIX + ChatColor.GREEN + "You tagged " + hider.getName() + "!");
-        broadcastToMatch(active, ChatColor.YELLOW + hider.getName() + " has been tagged. "
-                + active.aliveHiders.size() + " hider(s) remain.");
-        if (active.aliveHiders.isEmpty()) endRound(active, true);
-    }
-
-    @EventHandler
     public void onHunterFreeze(PlayerMoveEvent event) {
         Match active = match;
         if (active == null || active.ending || !active.hunterLocked
@@ -915,7 +899,7 @@ public final class MobHuntGame implements Listener {
                 player.setGameMode(GameMode.ADVENTURE);
                 player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
                 giveHunterBaseKit(player);
-                player.sendTitle(ChatColor.RED + "HUNTER RESPAWN", ChatColor.GRAY + active.hunterLives + " lives left", 5, 35, 10);
+                player.sendTitle(ChatColor.RED + "HUNTER RESPAWN", ChatColor.GRAY + "" + active.hunterLives + " lives left", 5, 35, 10);
             } else {
                 player.setGameMode(GameMode.SPECTATOR);
                 player.sendTitle(ChatColor.GRAY + "SPECTATING", ChatColor.DARK_GRAY + "You are out this round.", 5, 35, 10);
