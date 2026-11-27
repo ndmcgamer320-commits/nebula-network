@@ -331,6 +331,10 @@ public final class MobHuntGame implements Listener {
         return plugin.getConfig().getBoolean("mobhunt.anti-camping", true);
     }
 
+    private boolean randomEventsEnabled() {
+        return plugin.getConfig().getBoolean("mobhunt.random-events", true);
+    }
+
     private int campLowLimit() {
         return Math.max(3, Math.min(12, plugin.getConfig().getInt("mobhunt.camp-low-limit", CAMP_LOW_LIMIT)));
     }
@@ -358,7 +362,9 @@ public final class MobHuntGame implements Listener {
         String path = "mobhunt.stats." + target.getUniqueId();
         viewer.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Mob Hunt stats for " + targetName);
         viewer.sendMessage(ChatColor.GRAY + "Matches: " + ChatColor.WHITE + plugin.getConfig().getInt(path + ".matches", 0)
-                + ChatColor.GRAY + " • Wins: " + ChatColor.GREEN + plugin.getConfig().getInt(path + ".wins", 0));
+                + ChatColor.GRAY + " • Match wins: " + ChatColor.GREEN + plugin.getConfig().getInt(path + ".wins", 0));
+        viewer.sendMessage(ChatColor.GRAY + "Hunter round wins: " + ChatColor.RED + plugin.getConfig().getInt(path + ".hunter-round-wins", 0)
+                + ChatColor.GRAY + " • Hider round wins: " + ChatColor.AQUA + plugin.getConfig().getInt(path + ".hider-round-wins", 0));
         viewer.sendMessage(ChatColor.GRAY + "Kills: " + ChatColor.WHITE + plugin.getConfig().getInt(path + ".kills", 0)
                 + ChatColor.GRAY + " • Survival: " + ChatColor.AQUA + plugin.getConfig().getInt(path + ".survival-seconds", 0) + "s"
                 + ChatColor.GRAY + " • Best: " + ChatColor.AQUA + plugin.getConfig().getInt(path + ".best-survival-seconds", 0) + "s");
@@ -739,8 +745,9 @@ public final class MobHuntGame implements Listener {
         active.mobPickPending.clear();
         active.hunterLives = configuredHunterLives();
         active.hunterKillStreak = 0;
-        active.hunterRoundWins = 0;
-        active.hiderRoundWins = 0;
+        active.hunterRoundWins.clear();
+        active.hiderRoundWins.clear();
+        active.randomEventCount = 0;
         active.abilityReadyAt.clear();
         world.getWorldBorder().setCenter(0.5, 0.5);
         world.getWorldBorder().setSize("castle".equals(active.mapName) ? 84.0 : 92.0);
@@ -838,6 +845,7 @@ public final class MobHuntGame implements Listener {
                 updateAntiCamping(active);
                 updateLastHiderMode(active);
                 updateAfkTracking(active);
+                if (randomEventsEnabled() && active.secondsLeft > 60 && active.secondsLeft % 90 == 0) triggerRandomEvent(active);
                 if (active.secondsLeft <= 60 && !active.zoneShrunk && plugin.getConfig().getBoolean("mobhunt.shrinking-zone", true)) {
                     active.zoneShrunk = true;
                     world.getWorldBorder().setSize(24.0, 60L);
@@ -1279,12 +1287,14 @@ public final class MobHuntGame implements Listener {
         logMatch("ROUND_END", active, "hunterWon=" + hunterWon + ", survivors=" + active.aliveHiders);
         active.cancelRoundTasks();
         if (hunterWon) {
-            active.hunterRoundWins++;
+            active.hunterRoundWins.merge(active.hunter, 1, Integer::sum);
             active.scores.merge(active.hunter, 1, Integer::sum);
             broadcastToMatch(active, ChatColor.GOLD + nameOf(active.hunter) + " eliminated every hider and wins the round!");
         } else {
-            active.hiderRoundWins++;
-            for (UUID id : active.aliveHiders) active.scores.merge(id, 1, Integer::sum);
+            for (UUID id : active.aliveHiders) {
+                active.hiderRoundWins.merge(id, 1, Integer::sum);
+                active.scores.merge(id, 1, Integer::sum);
+            }
             broadcastToMatch(active, ChatColor.GREEN + "Time is up! Every hider who stayed hidden earns a point.");
         }
         for (UUID id : active.players) {
@@ -1328,9 +1338,9 @@ public final class MobHuntGame implements Listener {
                     plugin.getConfig().getInt(path + ".best-survival-seconds", 0)));
             if (winners.contains(id)) plugin.getConfig().set(path + ".wins", plugin.getConfig().getInt(path + ".wins", 0) + 1);
             plugin.getConfig().set(path + ".hunter-round-wins",
-                    plugin.getConfig().getInt(path + ".hunter-round-wins", 0) + (id.equals(active.hunter) ? active.hunterRoundWins : 0));
+                    plugin.getConfig().getInt(path + ".hunter-round-wins", 0) + active.hunterRoundWins.getOrDefault(id, 0));
             plugin.getConfig().set(path + ".hider-round-wins",
-                    plugin.getConfig().getInt(path + ".hider-round-wins", 0) + (id.equals(active.hunter) ? 0 : active.hiderRoundWins));
+                    plugin.getConfig().getInt(path + ".hider-round-wins", 0) + active.hiderRoundWins.getOrDefault(id, 0));
             ConfigurationSection mobUses = plugin.getConfig().getConfigurationSection(path + ".mob-uses");
             if (mobUses != null && !mobUses.getKeys(false).isEmpty()) {
                 String favorite = mobUses.getKeys(false).stream().max(Comparator.comparingInt(mobUses::getInt)).orElse("N/A");
@@ -1733,6 +1743,40 @@ public final class MobHuntGame implements Listener {
         }
     }
 
+    private void triggerRandomEvent(Match active) {
+        active.randomEventCount++;
+        int event = random.nextInt(4);
+        switch (event) {
+            case 0 -> {
+                for (UUID id : active.aliveHiders) {
+                    Player hider = Bukkit.getPlayer(id);
+                    if (hider != null) hider.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 0, false, false, true));
+                }
+                broadcastToMatch(active, ChatColor.AQUA + "Random Event: " + ChatColor.WHITE + "Hider Sprint! Hiders gain a short speed boost.");
+            }
+            case 1 -> {
+                Player hunter = Bukkit.getPlayer(active.hunter);
+                if (hunter != null) hunter.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 40, 0, false, false, true));
+                broadcastToMatch(active, ChatColor.LIGHT_PURPLE + "Random Event: " + ChatColor.WHITE + "Village Fog! The hunter briefly loses vision.");
+            }
+            case 2 -> {
+                for (UUID id : active.aliveHiders) {
+                    Player hider = Bukkit.getPlayer(id);
+                    if (hider != null) hider.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 100, 1, false, false, true));
+                }
+                broadcastToMatch(active, ChatColor.GREEN + "Random Event: " + ChatColor.WHITE + "Spring Hop! Hiders gain a short jump boost.");
+            }
+            default -> {
+                for (UUID id : active.aliveHiders) {
+                    Player hider = Bukkit.getPlayer(id);
+                    if (hider != null) hider.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 160, 0, false, false, true));
+                }
+                broadcastToMatch(active, ChatColor.GOLD + "Random Event: " + ChatColor.WHITE + "Moonlight! Hiders gain temporary night vision.");
+            }
+        }
+        logMatch("RANDOM_EVENT", active, "event=" + event);
+    }
+
     private void updateAfkTracking(Match active) {
         for (UUID id : active.players) {
             Player p=Bukkit.getPlayer(id); if (p==null || !p.isOnline()) continue;
@@ -1827,8 +1871,9 @@ public final class MobHuntGame implements Listener {
         final Map<UUID, Long> abilityReadyAt = new HashMap<>();
         final Map<UUID, Integer> survivalSeconds = new HashMap<>();
         final Map<UUID, Integer> kills = new HashMap<>();
-        int hunterRoundWins;
-        int hiderRoundWins;
+        final Map<UUID, Integer> hunterRoundWins = new HashMap<>();
+        final Map<UUID, Integer> hiderRoundWins = new HashMap<>();
+        int randomEventCount;
         final Set<UUID> disconnected = new LinkedHashSet<>();
         final Set<UUID> forfeited = new LinkedHashSet<>();
         final Map<UUID, BukkitTask> disconnectTasks = new HashMap<>();
