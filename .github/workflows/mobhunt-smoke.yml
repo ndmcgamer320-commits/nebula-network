@@ -17,7 +17,7 @@ permissions:
 jobs:
   paper-startup:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -109,7 +109,7 @@ jobs:
           trap cleanup EXIT
 
           READY=0
-          for i in $(seq 1 90); do
+          for i in $(seq 1 150); do
             if grep -q "Mob Hunt is ready" server.log && grep -q "NebulaCore enabled" server.log; then
               READY=1
               break
@@ -119,6 +119,7 @@ jobs:
               echo "::error::Paper stopped before NebulaCore finished enabling."
               exit 1
             fi
+            if [ $((i % 15)) -eq 0 ]; then echo "Still waiting for Paper startup ($((i * 2)) seconds)..."; tail -n 25 server.log; fi
             sleep 2
           done
 
