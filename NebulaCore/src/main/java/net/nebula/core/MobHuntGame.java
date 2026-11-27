@@ -751,10 +751,12 @@ public final class MobHuntGame implements Listener {
         active.abilityReadyAt.clear();
         world.getWorldBorder().setCenter(0.5, 0.5);
         world.getWorldBorder().setSize("castle".equals(active.mapName) ? 84.0 : 92.0);
+        world.getWorldBorder().setDamageBuffer(0.0);
+        world.getWorldBorder().setDamageAmount(0.0);
         active.zoneShrunk = false;
 
         List<UUID> candidates = new ArrayList<>(active.players);
-        candidates.removeIf(id -> Bukkit.getPlayer(id) == null || !Bukkit.getPlayer(id).isOnline());
+        candidates.removeIf(id -> active.forfeited.contains(id) || Bukkit.getPlayer(id) == null || !Bukkit.getPlayer(id).isOnline());
         if (candidates.size() < MIN_PLAYERS) {
             finishMatch(active);
             return;
@@ -1187,11 +1189,11 @@ public final class MobHuntGame implements Listener {
     private void useMobAbility(Player player, Match active) {
         UUID id = player.getUniqueId();
         String mob = active.mobForms.getOrDefault(id, "PIG");
+        if (!isMobEnabled(mob)) { player.sendMessage(PREFIX + ChatColor.RED + "That mob's ability is disabled by an admin."); return; }
         long now = System.currentTimeMillis(), readyAt = active.abilityReadyAt.getOrDefault(id, 0L);
         if (now < readyAt) { player.sendMessage(PREFIX + ChatColor.RED + "Ability cooldown: " + ((readyAt - now + 999) / 1000) + "s."); openAbilityGui(player); return; }
         active.abilityReadyAt.put(id, now + configuredAbilityCooldown(mob));
         Player hunter = Bukkit.getPlayer(active.hunter);
-        if (!isMobEnabled(mob)) { player.sendMessage(PREFIX + ChatColor.RED + "That mob's ability is disabled by an admin."); return; }
         boolean hunterNearby = hunter != null && hunter.isOnline() && hunter.getWorld().equals(world)
                 && hunter.getLocation().distanceSquared(player.getLocation()) <= 100;
         switch (mob) {
@@ -1489,7 +1491,10 @@ public final class MobHuntGame implements Listener {
                 cause = " with " + (weapon.getType().isAir() ? "fists" : pretty(weapon.getType().name()));
             }
         }
-        broadcastToMatch(active, ChatColor.RED + (killer == null ? player.getName() : killer.getName()) + ChatColor.GRAY + " eliminated " + ChatColor.YELLOW + player.getName() + ChatColor.GRAY + cause + "!");
+        String feed = killer == null
+                ? ChatColor.YELLOW + player.getName() + ChatColor.GRAY + " was eliminated by the arena" + cause + "!"
+                : ChatColor.RED + killer.getName() + ChatColor.GRAY + " eliminated " + ChatColor.YELLOW + player.getName() + ChatColor.GRAY + cause + "!";
+        broadcastToMatch(active, feed);
         UUID id = player.getUniqueId();
         if (killer != null && !killer.getUniqueId().equals(id) && active.players.contains(killer.getUniqueId())) {
             UUID killerId = killer.getUniqueId();
@@ -1521,14 +1526,26 @@ public final class MobHuntGame implements Listener {
         if (active == null || !active.players.contains(player.getUniqueId())) return;
         event.setRespawnLocation(new Location(world, 0.5, arenaBaseY + 1.0, 0.5));
         Bukkit.getScheduler().runTask(plugin, () -> {
-            if (match != active || active.roundEnded || active.ending) return;
-            if (player.getUniqueId().equals(active.hunter)) {
+            if (match != active || active.ending || !player.isOnline()) return;
+            if (active.roundEnded) {
+                player.setGameMode(GameMode.SPECTATOR);
+                player.setAllowFlight(true);
+                player.setFlying(true);
+                player.sendTitle(ChatColor.GRAY + "ROUND OVER", ChatColor.DARK_GRAY + "Waiting for the next round...", 0, 35, 5);
+            } else if (player.getUniqueId().equals(active.hunter)) {
                 player.setGameMode(GameMode.ADVENTURE);
                 player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
                 giveHunterBaseKit(player);
+                Set<Material> selected = active.selectedTools.getOrDefault(player.getUniqueId(), Collections.emptySet());
+                for (Material tool : selected) {
+                    boolean present = Arrays.stream(player.getInventory().getContents()).anyMatch(item -> item != null && item.getType() == tool);
+                    if (!present) player.getInventory().addItem(new ItemStack(tool));
+                }
                 player.sendTitle(ChatColor.RED + "HUNTER RESPAWN", ChatColor.GRAY + "" + active.hunterLives + " lives left", 5, 35, 10);
             } else {
                 player.setGameMode(GameMode.SPECTATOR);
+                player.setAllowFlight(true);
+                player.setFlying(true);
                 player.sendTitle(ChatColor.GRAY + "SPECTATING", ChatColor.DARK_GRAY + "You are out this round.", 5, 35, 10);
             }
         });
