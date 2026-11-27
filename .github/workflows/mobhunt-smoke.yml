@@ -1,0 +1,132 @@
+name: Nebula Mob Hunt Runtime Smoke Test
+
+on:
+  push:
+    branches: [feature/mobhunt-full-upgrade]
+    paths:
+      - "NebulaCore/**"
+      - ".github/workflows/mobhunt-smoke.yml"
+  pull_request:
+    paths:
+      - "NebulaCore/**"
+      - ".github/workflows/mobhunt-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  paper-startup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify EULA file
+        run: |
+          if [ ! -f eula.txt ] || ! grep -qx 'eula=true' eula.txt; then
+            echo "::error::The repository must contain the previously accepted eula.txt."
+            exit 1
+          fi
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Install build utilities
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Compile NebulaCore
+        run: mvn -B -f NebulaCore/pom.xml clean package
+
+      - name: Download Paper 1.21.11
+        run: |
+          set -euo pipefail
+          USER_AGENT="NebulaNetwork-SmokeTest (https://github.com/ndmcgamer320-commits/nebula-network)"
+          BUILDS=$(curl -fsSL -H "User-Agent: $USER_AGENT" -H "Accept: application/json" https://fill.papermc.io/v3/projects/paper/versions/1.21.11/builds)
+          PAPER_URL=$(echo "$BUILDS" | jq -r 'first(.[] | select(.channel == "STABLE") | .downloads."server:default".url) // "null"')
+          if [ "$PAPER_URL" = "null" ] || [ -z "$PAPER_URL" ]; then
+            echo "::error::No stable Paper 1.21.11 download was returned."
+            exit 1
+          fi
+          curl -fL --retry 3 -H "User-Agent: $USER_AGENT" "$PAPER_URL" -o paper.jar
+          test -s paper.jar
+
+      - name: Install NebulaCore runtime dependencies
+        run: |
+          set -euo pipefail
+          mkdir -p plugins
+          cp NebulaCore/target/NebulaCore-1.0.0.jar plugins/
+
+          curl -fL --retry 3 "https://ci.citizensnpcs.co/job/Citizens2/4119/artifact/dist/target/Citizens-2.0.41-b4119.jar" -o plugins/Citizens.jar
+          curl -fL --retry 3 "https://github.com/libraryaddict/LibsDisguises/releases/download/v11.0.18/LibsDisguises-11.0.18-Github.jar" -o plugins/LibsDisguises.jar
+          curl -fL --retry 3 "https://cdn.modrinth.com/data/9js4IEHC/versions/fPuH4uYs/AuthMe-6.0.1-Paper.jar" -o plugins/AuthMe.jar
+          curl -fL --retry 3 "https://hangarcdn.papermc.io/plugins/Multiverse/Multiverse-Core/versions/5.8.2/PAPER/multiverse-core-5.8.2.jar" -o plugins/Multiverse-Core.jar
+          curl -fL --retry 3 "https://hangarcdn.papermc.io/plugins/Multiverse/Multiverse-Inventories/versions/5.3.2/PAPER/multiverse-inventories-5.3.2.jar" -o plugins/Multiverse-Inventories.jar
+
+          VWG_RELEASE=$(curl -fsSL -H "Accept: application/vnd.github+json" https://api.github.com/repos/HydrolienF/VoidWorldGenerator/releases/tags/1.3.11)
+          VWG_URL=$(echo "$VWG_RELEASE" | jq -r '[.assets[] | select(.name | endswith(".jar")) | .browser_download_url][0] // "null"')
+          if [ "$VWG_URL" = "null" ]; then echo "::error::VoidWorldGenerator release asset not found."; exit 1; fi
+          curl -fL --retry 3 "$VWG_URL" -o plugins/VoidWorldGenerator.jar
+
+          PE_VERSIONS=$(curl -fsSL -G --data-urlencode 'game_versions=["1.21.11"]' --data-urlencode 'loaders=["paper"]' https://api.modrinth.com/v2/project/packetevents/version)
+          PE_URL=$(echo "$PE_VERSIONS" | jq -r 'first(.[] | select(.version_number == "2.11.1+spigot") | .files[] | select(.primary == true) | .url) // "null"')
+          if [ "$PE_URL" = "null" ]; then echo "::error::PacketEvents 2.11.1 was not found."; exit 1; fi
+          curl -fL --retry 3 "$PE_URL" -o plugins/packetevents.jar
+
+          for jar in plugins/*.jar; do
+            test -s "$jar"
+            jar tf "$jar" >/dev/null
+            echo "Verified $jar"
+          done
+
+      - name: Configure isolated test server
+        run: |
+          cp eula.txt eula.txt
+          cat > server.properties <<'EOF'
+          server-ip=127.0.0.1
+          server-port=25565
+          online-mode=false
+          motd=Nebula runtime smoke test
+          max-players=4
+          view-distance=4
+          simulation-distance=4
+          spawn-protection=0
+          enable-command-block=true
+          EOF
+
+      - name: Start Paper and verify NebulaCore and Mob Hunt load
+        run: |
+          set -euo pipefail
+          java -Xms1G -Xmx2G -XX:+UseG1GC -jar paper.jar --nogui > server.log 2>&1 &
+          SERVER_PID=$!
+          cleanup() {
+            kill -TERM "$SERVER_PID" 2>/dev/null || true
+            wait "$SERVER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          READY=0
+          for i in $(seq 1 90); do
+            if grep -q "Mob Hunt is ready" server.log && grep -q "NebulaCore enabled" server.log; then
+              READY=1
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              cat server.log
+              echo "::error::Paper stopped before NebulaCore finished enabling."
+              exit 1
+            fi
+            sleep 2
+          done
+
+          echo "=== Paper startup log ==="
+          tail -n 160 server.log
+          if [ "$READY" -ne 1 ]; then
+            echo "::error::Paper did not report both NebulaCore enabled and Mob Hunt ready within 180 seconds."
+            exit 1
+          fi
+          echo "Paper startup smoke test passed: NebulaCore loaded and Mob Hunt initialized."
