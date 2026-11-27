@@ -61,6 +61,11 @@ public final class NebulaCore extends JavaPlugin implements Listener {
     private static final String SETTINGS_TITLE = ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "NEBULA SETTINGS";
 
     @Override
+    public void onDisable() {
+        if (mobHunt != null) mobHunt.shutdown();
+    }
+
+    @Override
     public void onEnable() {
         // Multiverse-Core creates and manages a dedicated empty lobby world.
         World lobbyWorld = Bukkit.getWorld("lobby");
@@ -201,7 +206,7 @@ public final class NebulaCore extends JavaPlugin implements Listener {
                 if (!player.isOnline()) { cancel(); return; }
                 AuthMeApi authMe = AuthMeApi.getInstance();
                 if (authMe != null && authMe.isAuthenticated(player)) {
-                    returnPlayerToLobby(player);
+                    if (mobHunt == null || !mobHunt.handleReconnect(player)) returnPlayerToLobby(player);
                     player.sendMessage(PREFIX + ChatColor.LIGHT_PURPLE + "Welcome to Nebula Network! " + ChatColor.GRAY + "Use /menu to choose a game.");
                     Bukkit.broadcastMessage(PREFIX + ChatColor.WHITE + player.getName() + ChatColor.GRAY + " joined the network.");
                     cancel();
