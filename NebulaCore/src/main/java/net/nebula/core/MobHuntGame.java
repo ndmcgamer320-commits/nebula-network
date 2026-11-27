@@ -369,7 +369,7 @@ public final class MobHuntGame implements Listener {
         active.hunterLocked = true;
         active.secondsLeft = ROUND_SECONDS;
         active.hunterLives = HUNTER_LIVES;
-        Player hunter = Bukkit.getPlayer(active.hunter);
+        Player hunter = active.hunter == null ? null : Bukkit.getPlayer(active.hunter);
         for (UUID id : candidates) {
             Player player = Bukkit.getPlayer(id);
             if (player == null) continue;
@@ -657,8 +657,9 @@ public final class MobHuntGame implements Listener {
     public void onMobPickerClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player) || !event.getView().getTitle().equals(MOB_PICK_TITLE)) return;
         event.setCancelled(true);
-        Match active = match;
-        if (active == null || active.roundEnded || !active.mobPickPending.contains(player.getUniqueId())) return;
+        Match active = practiceSessions.getOrDefault(player.getUniqueId(), match);
+        boolean practice = practiceSessions.containsKey(player.getUniqueId());
+        if (active == null || active.roundEnded || (!practice && !active.mobPickPending.contains(player.getUniqueId()))) return;
         int slot = event.getRawSlot();
         if (slot == 45 || slot == 46 || slot == 47 || slot == 48) {
             String category = slot == 45 ? "passive" : slot == 46 ? "hostile" : slot == 47 ? "special" : "";
@@ -690,9 +691,9 @@ public final class MobHuntGame implements Listener {
         event.setCancelled(true);
         String query = event.getMessage().trim();
         Bukkit.getScheduler().runTask(plugin, () -> {
-            Match active = match;
+            Match active = practiceSessions.getOrDefault(id, match);
             Player player = Bukkit.getPlayer(id);
-            if (player != null && active != null && active.mobPickPending.contains(id)) {
+            if (player != null && active != null && (practiceSessions.containsKey(id) || active.mobPickPending.contains(id))) {
                 String normalized = query.toUpperCase(java.util.Locale.ROOT).replace(' ', '_');
                 boolean found = MOB_TYPES.stream().anyMatch(m -> m.contains(normalized));
                 if (found) openMobPicker(player, query);
@@ -889,8 +890,8 @@ public final class MobHuntGame implements Listener {
     }
 
     private void openAbilityGui(Player player) {
-        Match active = match;
-        if (active == null || !active.aliveHiders.contains(player.getUniqueId())) return;
+        Match active = practiceSessions.getOrDefault(player.getUniqueId(), match);
+        if (active == null || (!practiceSessions.containsKey(player.getUniqueId()) && !active.aliveHiders.contains(player.getUniqueId()))) return;
         String mob = active.mobForms.getOrDefault(player.getUniqueId(), "PIG");
         long remain = Math.max(0L, active.abilityReadyAt.getOrDefault(player.getUniqueId(), 0L) - System.currentTimeMillis());
         Inventory inv = Bukkit.createInventory(null, 27, ABILITY_TITLE);
@@ -999,8 +1000,8 @@ public final class MobHuntGame implements Listener {
     @EventHandler
     public void onAbilityKey(PlayerSwapHandItemsEvent event) {
         Player player = event.getPlayer();
-        Match active = match;
-        if (active == null || !active.aliveHiders.contains(player.getUniqueId()) || !usesSwapHands(player)) return;
+        Match active = practiceSessions.getOrDefault(player.getUniqueId(), match);
+        if (active == null || (!practiceSessions.containsKey(player.getUniqueId()) && !active.aliveHiders.contains(player.getUniqueId())) || !usesSwapHands(player)) return;
         event.setCancelled(true);
         useMobAbility(player, active);
     }
@@ -1009,8 +1010,8 @@ public final class MobHuntGame implements Listener {
     public void onAbilityItem(PlayerInteractEvent event) {
         ItemStack item = event.getItem();
         Player player = event.getPlayer();
-        Match active = match;
-        if (active == null || !active.aliveHiders.contains(player.getUniqueId())
+        Match active = practiceSessions.getOrDefault(player.getUniqueId(), match);
+        if (active == null || (!practiceSessions.containsKey(player.getUniqueId()) && !active.aliveHiders.contains(player.getUniqueId()))
                 || !event.getAction().isRightClick() || usesSwapHands(player)) return;
         boolean blankHand = item == null || item.getType().isAir();
         boolean abilityItem = item != null && item.hasItemMeta()
@@ -1241,8 +1242,8 @@ public final class MobHuntGame implements Listener {
 
     @EventHandler
     public void onSpiderWallClimb(PlayerMoveEvent event) {
-        Match active = match;
         Player player = event.getPlayer();
+        Match active = practiceSessions.getOrDefault(player.getUniqueId(), match);
         if (active == null || active.roundEnded || !active.aliveHiders.contains(player.getUniqueId())) return;
         String mob = active.mobForms.get(player.getUniqueId());
         if (!"SPIDER".equals(mob) && !"CAVE_SPIDER".equals(mob)) return;
@@ -1378,6 +1379,7 @@ public final class MobHuntGame implements Listener {
         UUID id = event.getPlayer().getUniqueId();
         if (queue.remove(id) && queue.size() < MIN_PLAYERS) cancelQueueCountdown();
         Match active = match;
+        if (practiceSessions.remove(id) != null) practiceSnapshots.remove(id);
         if (active == null || !active.players.contains(id)) return;
         active.players.remove(id);
         active.aliveHiders.remove(id);
